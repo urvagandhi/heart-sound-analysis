@@ -74,3 +74,8 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+
+# Large Model Checkpoints
+*.pth
+*.ckpt
+
