@@ -79,3 +79,5 @@ desktop.ini
 *.pth
 *.ckpt
 
+# Nested cloned repositories and tooling
+humanizer_repo/

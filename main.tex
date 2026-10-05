@@ -1,0 +1,365 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{cite}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{url}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
+\graphicspath{{figures/}}
+
+\begin{document}
+
+\title{Explainable AI for Heart Sound Analysis: Bridging the Gap Between Algorithmic Inference and Clinical Reasoning}
+
+\author{
+\IEEEauthorblockN{Urva Gandhi and Rakshit Gajnotar}
+\IEEEauthorblockA{Department of Computer Science and Engineering\\
+Nirma University, Ahmedabad, India\\
+23BCE078 and 23BCE077}
+\and
+\IEEEauthorblockN{Dr.\ Sapan Mankad}
+\IEEEauthorblockA{Department of Computer Science and Engineering\\
+Nirma University, Ahmedabad, India\\
+Project guide}
+}
+
+\maketitle
+
+\begin{abstract}
+Automated heart sound classifiers achieve high accuracy, yet few provide clinicians with means to verify whether a prediction stems from genuine cardiac murmurs or recording noise. This paper presents a phonocardiogram (PCG) classifier paired with three complementary explanation methods. Raw recordings are band-pass filtered from 25 to 900 Hz, standardized to 8 s and converted to 128-band log-mel spectrograms. An ImageNet-pretrained ResNet50 extracts features, a squeeze-and-excitation block reweights channels and an eight-head self-attention layer mixes 49 spatial tokens before a compact classification head (41.9 M parameters total). Training follows a frozen-backbone warm-up followed by full fine-tuning with class-weighted, label-smoothed cross-entropy. On the PhysioNet/CinC 2016 benchmark (3,541 entries with 532 held out for testing), the model achieves 90.79\% accuracy, 0.9457 AUC-ROC, 88.61\% balanced accuracy and 87.43\% macro F1. Two key limitations characterize this evaluation: the 301 validation-folder entries duplicate training recordings and accuracy drops from 99.11\% on training-e to 76.29\% across all other subsets combined. Grad-CAM heatmaps, spatial self-attention maps and SHAP feature profiles indicate that attributions concentrate below 400 Hz with a temporal grid resolution of approximately 1.14 s per cell.
+\end{abstract}
+
+\begin{IEEEkeywords}
+phonocardiogram, heart sound classification, explainable AI, ResNet50, squeeze-and-excitation, self-attention, Grad-CAM, SHAP
+\end{IEEEkeywords}
+
+%=====================================================================
+\section{Introduction}
+Cardiovascular disease accounts for approximately 17.9 million deaths annually; early detection and treatment can avert up to 80\% of these premature deaths \cite{who_cvd}. Cardiac auscultation remains the most accessible frontline screening tool. A clinician listens for the first and second heart sounds, S1 (25 to 100 Hz) and S2 (50 to 150 Hz), as well as murmurs. Murmurs stem from turbulent blood flow during the normally quiet intervals between S1 and S2, carrying acoustic energy primarily between 150 and 500 Hz. Auscultation requires extensive clinical training and results vary widely among examiners, particularly on low-intensity murmurs. Ambient noise, respiration and stethoscope friction frequently distort the recorded signal.
+
+Deep neural networks trained on phonocardiograms (PCG) achieve strong diagnostic accuracy, yet standard architectures output categorical predictions without physiological justification. Clinicians cannot readily determine whether a model detects genuine pathological murmurs or exploits acoustic artifacts, background hiss or site-specific recording signatures. Alrabie and Barnawi addressed this transparency gap by comparing Grad-CAM heatmaps against expert bounding boxes, but their workflow requires manual cycle segmentation for every recording \cite{alrabie}. Chakrabarty et al.\ demonstrated that individual saliency maps can produce misleading explanations and recommended combining multiple attribution methods \cite{chakrabarty}.
+
+This paper presents an unsegmented PCG classifier combining ResNet50 \cite{he}, squeeze-and-excitation (SE) channel recalibration \cite{hu} and multi-head self-attention \cite{vaswani}. Predictions are evaluated using Grad-CAM \cite{selvaraju}, spatial attention maps and SHAP gradient explanations \cite{lundberg}. The contributions are:
+\begin{enumerate}
+\item A signal pipeline converting raw, variable-length PCG audio into standardized 128-band log-mel spectrograms.
+\item A hybrid ResNet50, SE and self-attention architecture (41.9 M parameters) trained via a two-phase protocol with class-weighted loss addressing the 77:23 class imbalance.
+\item A tripartite explanation suite coupling spatial (Grad-CAM), token-level (attention) and frequency-band (SHAP) attributions with a practical assessment of their spatial and temporal resolution limits.
+\item An empirical evaluation on PhysioNet/CinC 2016 reporting balanced accuracy, macro F1, precision-recall trajectories, a per-subset breakdown and an audit of duplicate entries in the challenge validation split.
+\end{enumerate}
+
+%=====================================================================
+\section{Literature Review}
+Early heart sound classifiers used hand-built features such as wavelet coefficients and mel-frequency cepstral coefficients, fed to hidden Markov models, support vector machines or random forests. Since about 2016 most work has moved to convolutional networks trained on spectrograms.
+
+Li et al.\ trained a multi-scale CNN with global average pooling on the PhysioNet 2016 data and reported 86.80\% accuracy, noting that pooling in place of dense layers reduced parameter count and overfitting \cite{li}. Their model offers no explanation of its outputs. Ren et al.\ added attention pooling to a CNN and evaluated on the Heart Sounds Shenzhen set and PhysioNet 2016, with 87.20\% accuracy and 0.910 AUC on the latter \cite{ren}. Their attention weights are defined per frame, indicating when the network listened but not at which frequencies. Althaph and Challa proposed a heart sound transformer with attention-based explanations, reporting 96.7\% on HeartWave and 90.3\% on PhysioNet 2016 \cite{althaph}. Padhy et al.\ combined a CNN with a bidirectional LSTM on spectrograms and reported 99.15\% accuracy on a balanced five-class valvular subset of 2,400 samples \cite{padhy}.
+
+The work closest to ours is by Alrabie and Barnawi, who combined pretrained CNN backbones with SE and multi-head attention on the four-class HeartWave data and reached 97.3\% accuracy \cite{alrabie}. They scored Grad-CAM against cardiologist annotations and obtained a mean intersection over union of 82\%. That scoring requires annotated segment boundaries, which PhysioNet 2016 does not provide. Other explainability studies apply LIME and SHAP to classical models for heart sound abnormality detection \cite{ramakrishna} and to tabular cardiovascular risk data \cite{guleria}. Table~\ref{tab:lit} summarizes these investigations.
+
+Three practical challenges motivate this study. First, leading explainability benchmarks depend on manual segmentation boundaries that are unavailable in primary screening. Second, most studies rely on a single attribution method despite evidence that solitary heatmaps can produce false confidence \cite{chakrabarty}. Third, publications routinely omit minority-class metrics and per-subset analyses, obscuring performance disparities across recording environments.
+
+\begin{table*}[t]
+\caption{Summary of related work and this study}
+\label{tab:lit}
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{p{2.4cm} p{3.5cm} p{0.9cm} p{3.5cm} p{1.6cm} p{1.1cm} p{2.3cm}}
+\toprule
+Study & Dataset & Classes & Model & Accuracy (\%) & AUC & Explanation \\
+\midrule
+Li et al.\ \cite{li} (2020) & PhysioNet 2016 & 2 & Multi-scale CNN, GAP & 86.80 & N/R & None \\
+Ren et al.\ \cite{ren} (2022) & HSS; PhysioNet 2016 & 3; 2 & CNN, attention pooling & 87.20 (PhysioNet) & 0.910 & Frame attention \\
+Padhy et al.\ \cite{padhy} (2025) & Balanced valvular subset (2,400) & 5 & CNN and BiLSTM & 99.15 & 0.99 & Saliency \\
+Althaph and Challa \cite{althaph} (2025) & HeartWave; PhysioNet 2016 & 9; 2 & Heart sound transformer & 96.7; 90.3 & N/R & Attention \\
+Alrabie and Barnawi \cite{alrabie} (2025) & HeartWave (segmented) & 4 & ResNet50, SE, MHA & 97.3 & 0.941 & Grad-CAM (mIoU 82\%) \\
+This work & PhysioNet 2016 (full) & 2 & ResNet50, SE, 8-head MHSA & 90.79 & 0.9457 & Grad-CAM, attention, SHAP \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+%=====================================================================
+\section{Dataset}
+We evaluate on the PhysioNet/CinC Challenge 2016 heart sound collection \cite{clifford}. The corpus compiles audio from six independent source databases, released as subsets training-a through training-f \cite{liu}. Recordings represent healthy volunteers and patients with confirmed cardiovascular conditions, including valvular defects and coronary artery disease. Data collection employed diverse electronic stethoscopes and microphones in uncontrolled clinical settings, introducing speech, respiration and skin-friction noise. Signal lengths range from 5 s to 120 s. Each recording carries a single binary label, mapped here to 0 for normal and 1 for abnormal.
+
+The working metadata table comprises 3,541 entries: 3,240 recordings from training-a through training-f plus 301 entries from the challenge validation directory. The validation entries are exact duplicates of training recordings; all 301 repeat the filename and label of an existing training sample. Across all 3,541 entries, 2,725 are normal (76.96\%) and 816 are abnormal (23.04\%), as illustrated in Fig.~\ref{fig:classdist}. Class proportions differ sharply by source: training-e is predominantly normal, whereas training-a contains a majority of abnormal cases.
+
+Entries were partitioned 70/15/15 into training, validation and test sets using stratified random sampling with seed 42 (Table~\ref{tab:split}). Because the partition operated uniformly over all entries at recording level, 70 of the 532 test recordings (13.2\%) duplicate files present in the training set. In addition, recordings from individual patients may span multiple partitions because subject identifiers are unindexed. We report results on this split to preserve continuity with prior runs while treating the scores as preliminary. A deduplicated benchmark retaining only the 3,240 unique recordings produces partitions of approximately 2,268 training, 486 validation and 486 test samples. Inverse-frequency class weights $w_c = 1 - N_c/N$ yield $w_0 = 0.2304$ for normal and $w_1 = 0.7696$ for abnormal samples.
+
+\begin{table}[t]
+\caption{Stratified data partitions (3,541 entries, including 301 duplicated validation-folder entries)}
+\label{tab:split}
+\centering
+\footnotesize
+\begin{tabular}{lrrr}
+\toprule
+Partition & Total & Normal & Abnormal \\
+\midrule
+Training & 2,478 & 1,907 & 571 \\
+Validation & 531 & 409 & 122 \\
+Test & 532 & 409 & 123 \\
+\midrule
+All & 3,541 & 2,725 & 816 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{class_distribution.png}
+\caption{Class distribution overall and per subset.}
+\label{fig:classdist}
+\end{figure}
+
+%=====================================================================
+\section{Proposed Methodology}
+Fig.~\ref{fig:arch} outlines the network architecture. The following subsections detail the experimental configuration and model design.
+
+\subsection{Experimental Setup}
+\textit{Preprocessing.} Each recording is resampled to 4 kHz, providing sufficient bandwidth above the 1 kHz ceiling where cardiac acoustic energy concentrates. A 4th-order Butterworth band-pass filter (25 to 900 Hz) runs forward and backward to achieve zero phase distortion, preserving temporal alignment of S1 and S2. This step suppresses low-frequency baseline drift below 25 Hz and acoustic hiss above 900 Hz. Signals are peak-normalized to $[-1,1]$, then padded with zeros or cropped from the onset to a uniform length of 8 s (32,000 samples). Most recordings last between 5 and 40 s; an 8 s window contains 8 to 13 complete cardiac cycles at resting heart rates of 60 to 100 bpm. As a sanity check, Hilbert-envelope peak detection yielded heart rate estimates of 94 to 95 bpm on two representative recordings (one per class).
+
+\textit{Features.} We compute the short-time Fourier transform with a 512-sample Hann window (128 ms) and a hop size of 128 samples (32 ms), projecting energy onto 128 mel filterbanks spanning 20 to 1000 Hz:
+\begin{equation}
+m = 2595\log_{10}\!\left(1+\frac{f}{700}\right).
+\end{equation}
+Spectrogram power is converted to decibels relative to the peak and scaled to $[0,1]$, yielding a $128\times251$ matrix stored as a \texttt{.npy} file. The mel scale concentrates frequency bins below 400 Hz, aligning spectral resolution with the principal acoustic components of heart sounds. For network input, spectrograms are resized bilinearly to $224\times224$, replicated across three channels and normalized with ImageNet mean and variance statistics.
+
+\textit{Augmentation.} During training, we apply SpecAugment \cite{park} in log-mel space prior to spatial resizing. Each spectrogram receives two frequency masks (width 1 to 17 bands) and two time masks (width 1 to 24 frames) set to zero.
+
+\textit{Training.} The network initializes with pretrained ImageNet weights \cite{deng}. Optimization proceeds in two stages. During warm-up (epochs 1 to 10), the backbone remains frozen while the SE block, attention layer and classifier head (18.4 M parameters) train with AdamW \cite{adamw} at a base learning rate of $3\times10^{-4}$, scheduled by cosine annealing \cite{sgdr} to $10^{-6}$. In the fine-tuning phase (epochs 11 to 40), all 41.9 M parameters train at $3\times10^{-5}$, decaying to $10^{-7}$. The objective is class-weighted cross-entropy with label smoothing ($\alpha=0.05$) \cite{szegedy}:
+\begin{equation}
+\mathcal{L} = -\sum_{c=0}^{1} w_c\, q_c \log p_c,\quad q_c = (1-\alpha)\,y_c + \frac{\alpha}{2}.
+\end{equation}
+The loss implementation normalizes weighted sums by the sum of target weights in each mini-batch. Table~\ref{tab:hp} summarizes hyperparameter selections. Models train on a single NVIDIA T4 GPU with mixed precision \cite{micikevicius}, retaining the checkpoint achieving lowest validation loss.
+
+\begin{table}[t]
+\caption{Training hyperparameters}
+\label{tab:hp}
+\centering
+\footnotesize
+\begin{tabular}{ll}
+\toprule
+Setting & Value \\
+\midrule
+Batch size & 32 \\
+Maximum epochs (warm-up + fine-tune) & 40 (10 + 30) \\
+Optimizer & AdamW, weight decay $10^{-4}$ \\
+Gradient clipping & max norm 1.0 \\
+Label smoothing $\alpha$ & 0.05 \\
+Early stopping & patience 8 on validation loss \\
+Dropout (head) & 0.4 and 0.2 \\
+Attention dropout (on weights) & 0.1 \\
+Random seed & 42 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textit{Evaluation.} Abnormal heart sounds constitute the positive class. Reported metrics include accuracy, balanced accuracy, macro precision, macro recall, macro F1, per-class precision, per-class recall, AUC-ROC and AUC-PR, supplemented by a per-subset performance audit. Predictions correspond to the argmax of softmax probabilities. Recall on abnormal recordings represents diagnostic sensitivity; recall on normal recordings represents specificity. Their arithmetic mean defines balanced accuracy, matching the evaluation metric of the 2016 PhysioNet challenge.
+
+\subsection{Models}
+\textit{Backbone.} A ResNet50 \cite{he} stripped of its global pooling and fully connected layers (23.5 M parameters) maps the $3\times224\times224$ spectrogram tensor to a $2048\times7\times7$ activation map.
+
+\textit{Squeeze-and-excitation.} The SE block \cite{hu} (0.52 M parameters) pools channel activations to a scalar descriptor $z_c$ and derives adaptive channel weights via a two-layer bottleneck with reduction ratio $r=16$:
+\begin{equation}
+\mathbf{s} = \sigma\!\big(\mathbf{W}_2\,\delta(\mathbf{W}_1\mathbf{z})\big),\qquad \tilde{F}_c = s_c F_c,
+\end{equation}
+where $\delta$ denotes ReLU and $\sigma$ denotes the sigmoid activation.
+
+\textit{Self-attention.} The recalibrated feature map is flattened into 49 spatial tokens of dimension 2048. An eight-head self-attention layer \cite{vaswani} (16.8 M parameters) with key dimension $d_k=256$ computes:
+\begin{equation}
+\mathrm{head}_i = \mathrm{softmax}\!\left(\frac{Q_iK_i^{\top}}{\sqrt{d_k}}\right)V_i.
+\end{equation}
+The projection is added via a residual connection and normalized with LayerNorm. Each token corresponds to one cell on the $7\times7$ grid (approximately 1.14 s of audio). Because grid cells exceed the duration of individual cardiac cycles, the self-attention layer integrates acoustic patterns across recurring beats.
+
+\textit{Classifier.} Spatial tokens are globally averaged and routed through dropout (0.4), a 512-unit linear layer with ReLU, dropout (0.2) and a final two-unit linear projection (1.05 M parameters). The complete network comprises 41,871,938 parameters.
+
+\textit{Explanation methods.} Three complementary interpretability methods examine model decisions. \emph{Grad-CAM} \cite{selvaraju} hooks the final bottleneck block of the backbone (\texttt{layer4[-1]}). For predicted class $c$, activation maps $A^k$ are weighted by pooled gradients and rectified:
+\begin{equation}
+\alpha^c_k = \frac{1}{Z}\sum_{i,j}\frac{\partial y^c}{\partial A^k_{ij}},\qquad L^c = \mathrm{ReLU}\Big(\sum_k \alpha^c_k A^k\Big).
+\end{equation}
+The resulting $7\times7$ map is upsampled bilinearly to $224\times224$. \emph{Spatial attention maps} average self-attention weights across heads and queries, indicating the cumulative attention allocated to each spatial token. Because the network contains a single attention layer, the computation yields a mean attention distribution directly without requiring recursive attention rollout. \emph{SHAP} employs the gradient explainer, approximating Shapley attributions through expected gradients \cite{lundberg}:
+\begin{equation}
+\phi_i(x) = \mathbb{E}_{x',\,\beta}\!\left[(x_i - x'_i)\,\frac{\partial f\big(x' + \beta(x-x')\big)}{\partial x_i}\right],
+\end{equation}
+where $x'$ is sampled from 32 training spectrograms and $\beta\sim U(0,1)$. Averaging $|\phi|$ across samples, channels and time frames generates a frequency importance profile. SHAP values are computed across 8 representative test recordings. Visual explanation axes display the center frequencies of the 128 mel filterbanks, reflecting non-linear frequency spacing.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[node distance=3mm,
+ box/.style={draw, rectangle, minimum width=6.2cm, minimum height=0.6cm, font=\footnotesize, align=center},
+ arr/.style={-{Latex}}]
+\node[box] (a) {Log-mel spectrogram, $3\times224\times224$};
+\node[box, below=of a] (b) {ResNet50 backbone, output $2048\times7\times7$};
+\node[box, below=of b] (c) {Squeeze-and-excitation ($r=16$)};
+\node[box, below=of c] (d) {Flatten to 49 tokens of dimension 2048};
+\node[box, below=of d] (e) {8-head self-attention, residual, LayerNorm};
+\node[box, below=of e] (f) {Token mean and MLP head (512 units)};
+\node[box, below=of f] (g) {Logits: Normal or Abnormal};
+\draw[arr] (a)--(b); \draw[arr] (b)--(c); \draw[arr] (c)--(d);
+\draw[arr] (d)--(e); \draw[arr] (e)--(f); \draw[arr] (f)--(g);
+\end{tikzpicture}
+\caption{Architecture of the proposed classifier.}
+\label{fig:arch}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{preprocessing_pipeline.png}
+\caption{Raw waveform, filtered signal and log-mel spectrogram for one recording.}
+\label{fig:prep}
+\end{figure}
+
+%=====================================================================
+\section{Results and Discussion}
+\subsection{Training Behavior}
+Fig.~\ref{fig:hist} displays training and validation trajectories. The lowest validation loss (0.3743) occurred at epoch 22, accompanied by 92.28\% validation accuracy and 0.8948 macro F1. Training loss and accuracy at that checkpoint were 0.2820 and 94.27\% respectively. Early stopping terminated training at epoch 30 following eight consecutive epochs without validation loss reduction; weights from epoch 22 were restored for test evaluation.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{training_history.png}
+\caption{Training and validation loss, accuracy, macro F1 and learning rate.}
+\label{fig:hist}
+\end{figure}
+
+\subsection{Test Performance}
+Table~\ref{tab:metrics} presents performance across the 532 held-out test recordings. The model correctly classifies 483 recordings (90.79\%). The confusion matrix in Fig.~\ref{fig:cm} shows 379 true negatives, 30 false positives, 19 false negatives and 104 true positives. Sensitivity for abnormal recordings reaches 84.55\% and specificity is 92.67\%, producing a balanced accuracy of 88.61\%. These scores derive from the split detailed in Section~III, which contains duplicated recordings and should be treated as preliminary.
+
+\begin{table}[t]
+\caption{Test-set results (532 recordings)}
+\label{tab:metrics}
+\centering
+\footnotesize
+\begin{tabular}{lc}
+\toprule
+Metric & Value \\
+\midrule
+Accuracy & 90.79\% \\
+Balanced accuracy & 88.61\% \\
+Macro precision & 86.42\% \\
+Macro recall & 88.61\% \\
+Macro F1 & 87.43\% \\
+AUC-ROC & 0.9457 \\
+AUC-PR & 0.8633 \\
+\bottomrule
+\end{tabular}
+
+\vspace{4pt}
+\begin{tabular}{lcccc}
+\toprule
+Class & Precision & Recall & F1 & Support \\
+\midrule
+Normal & 95.23 & 92.67 & 93.93 & 409 \\
+Abnormal & 77.61 & 84.55 & 80.93 & 123 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The performance gap between classes reflects the 77:23 distribution skew. Precision on abnormal recordings (77.61\%) falls below sensitivity (84.55\%) because class weighting penalizes false negatives more heavily than false positives, consistent with clinical screening goals where unflagged pathologies carry higher risk. Fig.~\ref{fig:roc} plots ROC and precision-recall curves. The AUC-PR of 0.8633 substantially exceeds the 0.231 random baseline corresponding to the abnormal class proportion.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{confusion_matrix.png}
+\caption{Confusion matrix on the test set, as counts and row-normalized.}
+\label{fig:cm}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{roc_pr_curves.png}
+\caption{ROC and precision-recall curves on the test set.}
+\label{fig:roc}
+\end{figure}
+
+\subsection{Per-Subset Analysis}
+Table~\ref{tab:subset} breaks test accuracy down by source subset. Subset training-e contributes 338 of the 532 test recordings (63.5\%) and is 90.5\% normal; a trivial majority-class classifier would achieve 90.5\% on this subset. The proposed model reaches 99.11\% on training-e. Across the remaining 194 test recordings, accuracy is 76.29\% (specificity 72.8\% and sensitivity 80.2\%, calculated from Table~\ref{tab:subset}). Subsets training-a and training-b yield accuracies near 79\%. Subsets c, d and f contain only 3, 11 and 20 test recordings respectively, making their observed accuracies (66.67\%, 45.45\% and 50.00\%) sensitive to small sample fluctuations. For instance, a single misclassification shifts training-d by 9 percentage points. Nonetheless, performance disparities indicate that aggregate metrics are driven by training-e. Accuracy drops on the other subsets reflect differences in recording hardware, acoustic noise floors and class priors. The 44 test recordings originating from the validation folder score 88.64\%.
+
+\begin{table}[t]
+\caption{Test accuracy (\%) by source subset}
+\label{tab:subset}
+\centering
+\footnotesize
+\begin{tabular}{lrrrccc}
+\toprule
+Subset & $N$ & Norm. & Abn. & Acc. & Norm.\ acc. & Abn.\ acc. \\
+\midrule
+training-a & 62 & 17 & 45 & 79.03 & 70.59 & 82.22 \\
+training-b & 54 & 42 & 12 & 79.63 & 80.95 & 75.00 \\
+training-c & 3 & 1 & 2 & 66.67 & 100.00 & 50.00 \\
+training-d & 11 & 6 & 5 & 45.45 & 33.33 & 60.00 \\
+training-e & 338 & 306 & 32 & 99.11 & 99.35 & 96.88 \\
+training-f & 20 & 15 & 5 & 50.00 & 53.33 & 40.00 \\
+validation & 44 & 22 & 22 & 88.64 & 81.82 & 95.45 \\
+\midrule
+All & 532 & 409 & 123 & 90.79 & 92.67 & 84.55 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Explanations}
+Fig.~\ref{fig:gradcam} illustrates Grad-CAM overlays for two confidently correct and two misclassified test recordings. Because \texttt{layer4} yields a $7\times7$ spatial grid, each cell spans approximately 1.14 s, exceeding the duration of an individual heartbeat. The heatmaps consequently indicate which time windows and mel bands influence decisions. They cannot resolve sub-beat transitions between S1, S2 and murmurs, so we make no claim regarding systolic or diastolic localization. In inspected examples, activation concentrates primarily across lower mel bands.
+
+Spatial attention maps (Fig.~\ref{fig:attn}) distribute weights across multiple grid columns, reflecting acoustic integration across recurring cardiac cycles. Given the coarse grid resolution and cross-head averaging, these maps provide an approximate indicator of contextual receptive field coverage.
+
+SHAP frequency profiles (Fig.~\ref{fig:shap}) reveal that mean absolute attribution peaks in the lower mel filterbanks (below 400 Hz) and diminishes in higher frequency bands, confirming that the model avoids reliance on high-frequency recording hiss. This profile reflects an 8-recording sample and illustrates class-level frequency tendencies across the tested batch.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{gradcam_overlays.png}
+\caption{Grad-CAM overlays for correct and misclassified test recordings. The vertical axis shows mel-band centre frequencies.}
+\label{fig:gradcam}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{attention_overlays.png}
+\caption{Self-attention maps averaged over heads and queries.}
+\label{fig:attn}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{shap_frequency_importance.png}
+\caption{Mean absolute SHAP attribution across the mel-frequency axis for each class.}
+\label{fig:shap}
+\end{figure}
+
+\subsection{Comparison with Related Work}
+On the PhysioNet 2016 benchmark, our model achieves 90.79\% accuracy, compared to 86.80\% for Li et al.\ \cite{li}, 87.20\% for Ren et al.\ \cite{ren} and 90.3\% for Althaph and Challa \cite{althaph}. Direct comparisons across these studies remain constrained by differences in data partitioning, preprocessing and random initialization. In addition, the partition evaluated here contains duplicate validation files. Alrabie and Barnawi \cite{alrabie} evaluated on segmented recordings from HeartWave, while Padhy et al.\ \cite{padhy} used a balanced five-class subset of 2,400 recordings. The primary contribution here is an explanation suite that operates directly on unsegmented recordings without manual annotation.
+
+\subsection{Limitations}
+Several limitations affect these findings. First, the evaluation split includes 301 duplicated validation-folder entries, causing 70 test recordings (13.2\%) to share content with the training split. Recordings from the same patient may also fall across partitions because subject identifiers are unavailable. Both factors can inflate reported performance until a deduplicated benchmark is established. Second, results reflect a single training run without multi-seed confidence intervals or external cohort validation. Third, diagnostic accuracy varies substantially across acquisition sites; aggregate scores reflect the dominance of training-e and overstate performance on noisier subsets. Fourth, visual explanations operate at a coarse spatial resolution of 1.14 s per cell and lack formal scoring against clinician annotations. Fifth, SHAP attributions reflect an 8-recording sample. Finally, cropping recordings to 8 s discards trailing cardiac cycles.
+
+%=====================================================================
+\section{Conclusion and Future Work}
+We developed an unsegmented heart sound classifier integrating a ResNet50 backbone, squeeze-and-excitation channel recalibration and multi-head self-attention paired with Grad-CAM, spatial attention maps and SHAP. Evaluated on the PhysioNet/CinC 2016 dataset, the network achieved 90.79\% accuracy, 0.9457 AUC-ROC and 88.61\% balanced accuracy on a held-out test partition. Two evaluation constraints qualify these results: the data split contains duplicate validation entries and test accuracy drops to 76.29\% outside the dominant subset. Visual explanations highlight lower mel bands, though spatial resolution remains bounded at 1.14 s per cell.
+
+Future work will proceed along several directions. We will repeat evaluations on the 3,240 unique recordings using patient-grouped and site-stratified partitions. We will report multi-seed confidence intervals and examine whether hardware calibration or acoustic filtering resolves subset discrepancies. To refine visual explanations, we will explore higher-resolution feature maps from earlier convolutional stages and expand the SHAP evaluation cohort. In collaboration with clinical cardiologists, we intend to annotate validation spectrograms to score Grad-CAM using mean intersection over union. Finally, we plan to investigate multi-label murmur classification, combined PCG-ECG inputs and model quantization for low-cost digital stethoscopes.
+
+%=====================================================================
+\begin{thebibliography}{99}
+\bibitem{who_cvd} World Health Organization, ``Cardiovascular diseases (CVDs),'' fact sheet. [Online]. Available: \url{https://www.who.int/news-room/fact-sheets/detail/cardiovascular-diseases-(cvds)}
+\bibitem{alrabie} S. Alrabie and A. Barnawi, ``Are artificial intelligence models listening like cardiologists? Bridging the gap between artificial intelligence and clinical reasoning in heart-sound classification using explainable artificial intelligence,'' \textit{Bioengineering}, vol. 12, no. 6, p. 558, 2025.
+\bibitem{chakrabarty} S. Chakrabarty, P. Bishwas, M. Bandyopadhyay and J. Sublime, ``Can we trust AI with our ears? A cross-domain comparative analysis of explainability in audio intelligence,'' \textit{IEEE Access}, vol. 13, pp. 36221--36245, 2025.
+\bibitem{he} K. He, X. Zhang, S. Ren and J. Sun, ``Deep residual learning for image recognition,'' in \textit{Proc. IEEE CVPR}, 2016, pp. 770--778.
+\bibitem{hu} J. Hu, L. Shen and G. Sun, ``Squeeze-and-excitation networks,'' in \textit{Proc. IEEE CVPR}, 2018, pp. 7132--7141.
+\bibitem{vaswani} A. Vaswani \textit{et al.}, ``Attention is all you need,'' in \textit{Proc. NeurIPS}, vol. 30, 2017.
+\bibitem{selvaraju} R. R. Selvaraju \textit{et al.}, ``Grad-CAM: Visual explanations from deep networks via gradient-based localization,'' in \textit{Proc. IEEE ICCV}, 2017, pp. 618--626.
+\bibitem{lundberg} S. M. Lundberg and S.-I. Lee, ``A unified approach to interpreting model predictions,'' in \textit{Proc. NeurIPS}, vol. 30, 2017.
+\bibitem{li} F. Li, H. Tang, S. Shang, K. Mathiak and F. Cong, ``Classification of heart sounds using convolutional neural network,'' \textit{Appl. Sci.}, vol. 10, no. 11, Art. no. 3956, 2020.
+\bibitem{ren} Z. Ren \textit{et al.}, ``Deep attention-based neural networks for explainable heart sound classification,'' \textit{Mach. Learn. Appl.}, vol. 9, Art. no. 100322, 2022.
+\bibitem{padhy} S. K. Padhy, A. Mohapatra and S. Patra, ``X-CBNet: An explainable effective deep learning framework based on spectrograms for predicting valvular disorder using PCG signals,'' \textit{J. Transform. Technol. Sustain. Dev.}, vol. 9, Art. no. 18, 2025.
+\bibitem{althaph} B. Althaph and N. P. Challa, ``Explainable attention-based deep learning for classification and interpretation of heart murmurs using phonocardiograms,'' \textit{Sci. Rep.}, vol. 15, Art. no. 37991, 2025.
+\bibitem{ramakrishna} J. S. Ramakrishna, S. C. Venkateswarlu, K. N. Kumar and P. Shreya, ``Development of explainable machine intelligence models for heart sound abnormality detection,'' \textit{Indones. J. Electr. Eng. Comput. Sci.}, vol. 36, no. 2, pp. 846--853, 2024.
+\bibitem{guleria} P. Guleria, P. N. Srinivasu, S. Ahmed, N. Almusallam and F. K. Alarfaj, ``XAI framework for cardiovascular disease prediction using classification techniques,'' \textit{Electronics}, vol. 11, no. 24, Art. no. 4086, 2022.
+\bibitem{clifford} G. D. Clifford \textit{et al.}, ``Classification of normal/abnormal heart sound recordings: The PhysioNet/Computing in Cardiology Challenge 2016,'' in \textit{Proc. Computing in Cardiology}, vol. 43, 2016, pp. 609--612.
+\bibitem{liu} C. Liu \textit{et al.}, ``An open access database for the evaluation of heart sound algorithms,'' \textit{Physiol. Meas.}, vol. 37, no. 12, pp. 2181--2213, 2016.
+\bibitem{park} D. S. Park \textit{et al.}, ``SpecAugment: A simple data augmentation method for automatic speech recognition,'' in \textit{Proc. Interspeech}, 2019, pp. 2613--2617.
+\bibitem{deng} J. Deng \textit{et al.}, ``ImageNet: A large-scale hierarchical image database,'' in \textit{Proc. IEEE CVPR}, 2009, pp. 248--255.
+\bibitem{adamw} I. Loshchilov and F. Hutter, ``Decoupled weight decay regularization,'' in \textit{Proc. ICLR}, 2019.
+\bibitem{sgdr} I. Loshchilov and F. Hutter, ``SGDR: Stochastic gradient descent with warm restarts,'' in \textit{Proc. ICLR}, 2017.
+\bibitem{szegedy} C. Szegedy, V. Vanhoucke, S. Ioffe, J. Shlens and Z. Wojna, ``Rethinking the Inception architecture for computer vision,'' in \textit{Proc. IEEE CVPR}, 2016, pp. 2818--2826.
+\bibitem{micikevicius} P. Micikevicius \textit{et al.}, ``Mixed precision training,'' in \textit{Proc. ICLR}, 2018.
+\end{thebibliography}
+
+\end{document}

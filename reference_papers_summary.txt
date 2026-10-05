@@ -1,0 +1,64 @@
+REFERENCE PAPERS HIERARCHY AND USAGE (MOST USED TO LEAST USED)
+==============================================================
+
+PROJECT TITLE:
+Explainable AI for Heart Sound Analysis: Bridging the Gap Between Algorithmic Inference and Clinical Reasoning
+
+==============================================================
+RANK 1: PRIMARY ARCHITECTURE AND XAI BLUEPRINT (MOST USED)
+==============================================================
+Paper:
+  S. Alrabie and A. Barnawi, "Are Artificial Intelligence Models Listening Like Cardiologists? Bridging the Gap Between Artificial Intelligence and Clinical Reasoning in Heart-Sound Classification Using Explainable Artificial Intelligence," Bioengineering, vol. 12, no. 6, p. 558, 2025.
+
+Primary Role in Project:
+  * Architectural Pipeline: Directly adopted the exact deep learning backbone and attention sequence:
+    1. ResNet50 backbone (23.5 M parameters) stripped of global pooling
+    2. Squeeze-and-Excitation (SE) channel recalibration block (0.52 M parameters, reduction ratio r=16)
+    3. Multi-Head Self-Attention (MHSA) module (16.8 M parameters, 8 heads, key dimension d_k=256)
+    4. Two-layer classification head with dropout (1.05 M parameters)
+    Total model parameters: 41,871,938 (~41.9 M).
+  * Interpretability: Foundation for applying Grad-CAM on layer4 bottleneck feature maps to visualize temporal-spectral activations.
+
+Project Extensions Beyond Alrabie and Barnawi:
+  * Dataset: Evaluated on unsegmented 8-second PCG recordings from PhysioNet/CinC 2016 (rather than segmented HeartWave audio).
+  * Multi-Head Spatial Attention: Extracted and averaged spatial attention weights across heads and queries.
+  * Attribution Profiling: Integrated Kernel and Gradient SHAP to compute frequency attribution bands across 128 mel filterbanks.
+  * Acoustic Scale Calibration: Adjusted visualization axes to true non-linear mel center frequencies rather than linear approximations.
+
+==============================================================
+RANK 2: PRIMARY DATASET AND BENCHMARK REFERENCE
+==============================================================
+Paper:
+  F. Li et al., "Heart Sound Classification Based on Multi-Scale CNN and Global Average Pooling," Applied Sciences, vol. 10, no. 11, p. 3956, 2020.
+  (Accompanying the PhysioNet/Computing in Cardiology 2016 Challenge benchmark by C. Liu et al., 2016).
+
+Primary Role in Project:
+  * Dataset Formulation: Primary reference for the 2-class (Normal vs Abnormal) classification task on the PhysioNet/CinC 2016 heart sound collection without manual cycle segmentation.
+  * Baseline Classification Benchmark: Established the direct baseline accuracy of 86.80% for unsegmented multi-scale CNN models, against which our hybrid attention model achieves 90.79% accuracy.
+
+==============================================================
+RANK 3: COMPARATIVE ATTENTION AND TRANSFORMER BENCHMARKS
+==============================================================
+Paper A:
+  M. Althaph and N. E. Challa, "Explainable attention-based deep learning for classification and interpretation of heart murmurs using phonocardiograms," 2025.
+  Role: Evaluated heart sound transformers on HeartWave (96.7%) and PhysioNet 2016 (90.30% accuracy), cited as a key transformer benchmark.
+
+Paper B:
+  Z. Ren et al., "Deep attention-based neural networks for explainable heart sound classification," 2022.
+  Role: Established attention pooling benchmark on unsegmented PhysioNet 2016 recordings (87.20% accuracy, 0.910 AUC).
+
+==============================================================
+RANK 4: SPECTROGRAM AND VALVULAR DISORDER REFERENCE
+==============================================================
+Paper:
+  P. P. Padhy et al., "X-CBNet: An Explainable Effective Deep Learning Framework Based on Spectrograms for Predicting Valvular Disorder using PCG Signals," 2025.
+  Role: Reference for converting time-domain phonocardiograms into 2D log-mel spectrograms and applying gradient saliency maps. Evaluated on a balanced 5-class valvular subset of 2,400 recordings (99.15% accuracy).
+
+==============================================================
+RANK 5: FOUNDATIONAL XAI AND SURVEY LITERATURE (LEAST USED)
+==============================================================
+Papers:
+  * S. Chakrabarty et al., "Can We Trust AI with Our Ears? A Cross-Domain Comparative Analysis of Explainability in Audio Intelligence," IEEE Access, vol. 13, 2025.
+  * World Health Organization, "Cardiovascular diseases (CVDs)" fact sheet.
+  * Foundational machine learning references: ResNet (He et al., 2016), SE networks (Hu et al., 2018), Transformer attention (Vaswani et al., 2017), Grad-CAM (Selvaraju et al., 2017) and SHAP (Lundberg & Lee, 2017).
+  Role: Contextual justification for explainable AI in clinical decision support and foundational algorithmic definitions.
