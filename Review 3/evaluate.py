@@ -180,3 +180,156 @@ def save_predictions_csv(metrics: Dict, test_df: pd.DataFrame,
         out[f"prob_{name}"] = metrics["probs"][:, i]
     out.to_csv(save_path, index=False)
     print(f"  Saved: {save_path}")
+
+
+def compute_and_save_extended_metrics(metrics: Dict,
+                                      test_df: pd.DataFrame,
+                                      train_df: Optional[pd.DataFrame],
+                                      output_dir: Path,
+                                      n_resamples: int = 2000,
+                                      seed: int = 42) -> Dict[str, object]:
+    """Compute and save:
+    1) output/per_subset_metrics.csv (N, normal, abnormal, accuracy, normal accuracy, abnormal accuracy per subset)
+    2) output/test_metrics_ci.json (95% bootstrap intervals, 2000 resamples, seed 42,
+       for accuracy, balanced accuracy, macro F1, AUC-ROC and AUC-PR, plus duplicated vs unique accuracy).
+    """
+    import json
+    from sklearn.metrics import (
+        accuracy_score, balanced_accuracy_score, f1_score,
+        roc_auc_score, average_precision_score,
+    )
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    labels = np.asarray(metrics["labels"])
+    preds  = np.asarray(metrics["preds"])
+    probs  = np.asarray(metrics["probs"])
+
+    # 1. Per-subset metrics CSV
+    subsets = sorted(test_df["subset"].unique())
+    rows = []
+    for sub in subsets:
+        mask = (test_df["subset"] == sub).values
+        sub_labels = labels[mask]
+        sub_preds  = preds[mask]
+        N = int(len(sub_labels))
+        n_norm = int(np.sum(sub_labels == 0))
+        n_abn  = int(np.sum(sub_labels == 1))
+        acc = float(np.mean(sub_preds == sub_labels)) if N > 0 else 0.0
+        norm_acc = float(np.mean(sub_preds[sub_labels == 0] == 0)) if n_norm > 0 else np.nan
+        abn_acc  = float(np.mean(sub_preds[sub_labels == 1] == 1)) if n_abn > 0 else np.nan
+        rows.append({
+            "subset": sub,
+            "N": N,
+            "normal": n_norm,
+            "abnormal": n_abn,
+            "accuracy": round(acc * 100, 2),
+            "normal_accuracy": round(norm_acc * 100, 2) if not np.isnan(norm_acc) else None,
+            "abnormal_accuracy": round(abn_acc * 100, 2) if not np.isnan(abn_acc) else None,
+        })
+
+    # Overall / All row
+    N_all = len(labels)
+    n_norm_all = int(np.sum(labels == 0))
+    n_abn_all  = int(np.sum(labels == 1))
+    acc_all = float(np.mean(preds == labels))
+    norm_acc_all = float(np.mean(preds[labels == 0] == 0)) if n_norm_all > 0 else 0.0
+    abn_acc_all  = float(np.mean(preds[labels == 1] == 1)) if n_abn_all > 0 else 0.0
+    rows.append({
+        "subset": "All",
+        "N": N_all,
+        "normal": n_norm_all,
+        "abnormal": n_abn_all,
+        "accuracy": round(acc_all * 100, 2),
+        "normal_accuracy": round(norm_acc_all * 100, 2),
+        "abnormal_accuracy": round(abn_acc_all * 100, 2),
+    })
+
+    df_subset = pd.DataFrame(rows)
+    subset_csv_path = output_dir / "per_subset_metrics.csv"
+    df_subset.to_csv(subset_csv_path, index=False)
+    print(f"  Saved: {subset_csv_path}")
+
+    # 2. Leakage analysis: duplicated vs unique test rows
+    leakage_stats = {}
+    if train_df is not None:
+        train_pairs = set(zip(train_df["filename"], train_df["label"]))
+        is_dup = np.array([(fn, lab) in train_pairs for fn, lab in zip(test_df["filename"], test_df["label"])])
+        n_dup = int(np.sum(is_dup))
+        n_uniq = int(np.sum(~is_dup))
+        acc_dup = float(np.mean(preds[is_dup] == labels[is_dup])) if n_dup > 0 else None
+        acc_uniq = float(np.mean(preds[~is_dup] == labels[~is_dup])) if n_uniq > 0 else None
+        dup_correct = int(np.sum(preds[is_dup] == labels[is_dup])) if n_dup > 0 else 0
+        uniq_correct = int(np.sum(preds[~is_dup] == labels[~is_dup])) if n_uniq > 0 else 0
+        leakage_stats = {
+            "duplicated_in_train": {
+                "count": n_dup,
+                "correct": dup_correct,
+                "accuracy": acc_dup,
+                "accuracy_pct": round(acc_dup * 100, 2) if acc_dup is not None else None,
+            },
+            "unique": {
+                "count": n_uniq,
+                "correct": uniq_correct,
+                "accuracy": acc_uniq,
+                "accuracy_pct": round(acc_uniq * 100, 2) if acc_uniq is not None else None,
+            }
+        }
+        print(f"  Duplicated in train: {n_dup} (acc: {leakage_stats['duplicated_in_train']['accuracy_pct']}%)")
+        print(f"  Unique test rows: {n_uniq} (acc: {leakage_stats['unique']['accuracy_pct']}%)")
+
+    # 3. Bootstrap intervals (2000 resamples, seed 42)
+    n = len(labels)
+    rng = np.random.RandomState(seed)
+    acc_list, bal_acc_list, f1_list, roc_list, pr_list = [], [], [], [], []
+
+    for _ in range(n_resamples):
+        idx = rng.choice(n, size=n, replace=True)
+        y_true = labels[idx]
+        y_pred = preds[idx]
+        acc_list.append(accuracy_score(y_true, y_pred))
+        bal_acc_list.append(balanced_accuracy_score(y_true, y_pred))
+        f1_list.append(f1_score(y_true, y_pred, average="macro", zero_division=0))
+        if len(np.unique(y_true)) > 1:
+            roc_list.append(roc_auc_score(y_true, probs[idx, 1]))
+            pr_list.append(average_precision_score(y_true, probs[idx, 1]))
+
+    ci_dict = {
+        "n_resamples": n_resamples,
+        "seed": seed,
+        "accuracy": {
+            "point": float(metrics["accuracy"]),
+            "ci_95": [float(np.percentile(acc_list, 2.5)), float(np.percentile(acc_list, 97.5))],
+            "ci_95_pct": [round(float(np.percentile(acc_list, 2.5)) * 100, 2),
+                          round(float(np.percentile(acc_list, 97.5)) * 100, 2)],
+        },
+        "balanced_accuracy": {
+            "point": float(metrics["balanced_accuracy"]),
+            "ci_95": [float(np.percentile(bal_acc_list, 2.5)), float(np.percentile(bal_acc_list, 97.5))],
+            "ci_95_pct": [round(float(np.percentile(bal_acc_list, 2.5)) * 100, 2),
+                          round(float(np.percentile(bal_acc_list, 97.5)) * 100, 2)],
+        },
+        "macro_f1": {
+            "point": float(metrics["f1_macro"]),
+            "ci_95": [float(np.percentile(f1_list, 2.5)), float(np.percentile(f1_list, 97.5))],
+            "ci_95_pct": [round(float(np.percentile(f1_list, 2.5)) * 100, 2),
+                          round(float(np.percentile(f1_list, 97.5)) * 100, 2)],
+        },
+        "auc_roc": {
+            "point": float(metrics["auc_roc"]),
+            "ci_95": [float(np.percentile(roc_list, 2.5)), float(np.percentile(roc_list, 97.5))],
+        },
+        "auc_pr": {
+            "point": float(metrics["auc_pr"]),
+            "ci_95": [float(np.percentile(pr_list, 2.5)), float(np.percentile(pr_list, 97.5))],
+        },
+        "leakage_analysis": leakage_stats,
+    }
+
+    ci_json_path = output_dir / "test_metrics_ci.json"
+    with open(ci_json_path, "w", encoding="utf-8") as f:
+        json.dump(ci_dict, f, indent=2)
+    print(f"  Saved: {ci_json_path}")
+
+    return {"per_subset": rows, "ci": ci_dict}

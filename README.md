@@ -19,7 +19,7 @@ Cardiovascular diseases (CVDs) remain the leading cause of global mortality, res
 
 Deep learning models have achieved high diagnostic accuracy in automated cardiac sound classification, yet they function as opaque **"black boxes"**. Clinicians cannot safely rely on automated predictions without clear, physiology-grounded explanations verifying whether decisions are based on genuine pathological murmur signatures rather than recording artifacts or background noise.
 
-This repository implements an end-to-end **Explainable Artificial Intelligence (XAI)** framework for automated heart sound classification on the benchmark **PhysioNet / CinC Challenge 2016** dataset. By integrating a transfer-learned **ResNet50** backbone with **Squeeze-and-Excitation (SE)** channel attention, **Multi-Head Self-Attention (MHSA)** for temporal context, and a tripartite interpretability suite (**Grad-CAM**, **Multi-Head Attention Rollout**, and **SHAP**), our framework provides actionable, visually intuitive clinical reasoning alongside state-of-the-art diagnostic metrics.
+This repository implements an end-to-end **Explainable Artificial Intelligence (XAI)** framework for automated heart sound classification on the benchmark **PhysioNet / CinC Challenge 2016** dataset. By integrating a transfer-learned **ResNet50** backbone with **Squeeze-and-Excitation (SE)** channel attention, **Multi-Head Self-Attention (MHSA)** for temporal context, and a three-part interpretability suite (**Grad-CAM**, **mean attention maps**, and **SHAP**), our framework provides actionable, visually intuitive clinical reasoning alongside state-of-the-art diagnostic metrics.
 
 ---
 
@@ -27,18 +27,18 @@ This repository implements an end-to-end **Explainable Artificial Intelligence (
 
 ```mermaid
 graph TD
-    A["Raw PCG Audio (.wav)"] --> B["Butterworth Bandpass Filter<br/>(25 - 400 Hz) + Resample (2,000 Hz)"]
-    B --> C["Fixed Duration Window (5.0s)<br/>+ Hilbert/Shannon Envelope Detection"]
-    C --> D["Log-Mel Spectrogram<br/>(128 Mel Bins, 224 × 224 RGB)"]
+    A["Raw PCG Audio (.wav)"] --> B["Butterworth Bandpass Filter<br/>(25 - 900 Hz) + Resample (4,000 Hz)"]
+    B --> C["Fixed Duration Window (8.0s)<br/>(Zero-Padding or Onset Crop)"]
+    C --> D["Log-Mel Spectrogram<br/>(128 Slaney Mel Bands, 20 - 1000 Hz, 224 × 224 RGB)"]
     
     subgraph HNN ["Hybrid Neural Network Architecture"]
         direction TB
-        E["Pretrained ResNet50 Backbone<br/>(layer1 - layer4 Feature Maps)"]
-        --> F["Squeeze-and-Excitation (SE Block)<br/>(Channel Attention, r = 16)"]
-        F --> G["Multi-Head Self-Attention<br/>(8 Attention Heads, Spatial & Temporal Context)"]
+        E["Pretrained ResNet50 Backbone<br/>(layer1 - layer4 Feature Maps, 23.5 M params)"]
+        --> F["Squeeze-and-Excitation (SE Block)<br/>(Channel Attention, r = 16, 0.52 M params)"]
+        F --> G["Multi-Head Self-Attention<br/>(8 Attention Heads, 49 Tokens, 16.8 M params)"]
         G --> H["LayerNorm + Residual Skip Connection"]
         H --> I["Global Average Pooling (GAP)"]
-        I --> J["Multi-Layer Perceptron (MLP) Head<br/>(Dropout 0.3 + Linear Layers)"]
+        I --> J["Multi-Layer Perceptron (MLP) Head<br/>(Dropout 0.4 & 0.2, 512 Units, 41.9 M Params Total)"]
     end
 
     D --> E
@@ -46,10 +46,10 @@ graph TD
     J --> K["Binary Classification Prediction<br/><b>Normal vs. Abnormal</b><br/>(90.79% Acc, 0.946 AUC-ROC)"]
     
     E -.->|"layer4[-1] Activation Hooks"| L1["Grad-CAM Heatmaps<br/>(Bottleneck Activations)"]
-    G -.->|"Attention Rollout Weights"| L2["Multi-Head Attention Maps<br/>(Temporal S1/S2 Transitions)"]
-    D -.->|"Mel-Band Attribution"| L3["SHAP Feature Importance<br/>(50 - 250 Hz Critical Bins)"]
+    G -.->|"Averaged Heads & Queries"| L2["Mean Spatial Attention Maps<br/>(49 Token Cells, ~1.14 s/cell)"]
+    D -.->|"GradientExplainer Attribution"| L3["SHAP Feature Importance<br/>(Attribution Across Frequency Bands)"]
 
-    subgraph XAI ["Tripartite Explainable AI (XAI) Suite"]
+    subgraph XAI ["Three-Part Explainable AI (XAI) Suite"]
         direction TB
         L1
         L2
@@ -74,13 +74,13 @@ graph TD
 [ Raw PCG Audio (.wav) ]
            │
            ▼
-[ Butterworth Bandpass (25 - 400 Hz) + Resample (2,000 Hz) ]
+[ Butterworth Bandpass (25 - 900 Hz) + Resample (4,000 Hz) ]
            │
            ▼
-[ Fixed Duration (5.0s) + Hilbert/Shannon Envelope Detection ]
+[ Fixed Duration (8.0s) (Zero-Padded / Onset-Cropped) ]
            │
            ▼
-[ Log-Mel Spectrogram (128 Mel Bins, 224×224 RGB) ]
+[ Log-Mel Spectrogram (128 Slaney Bands, 20 - 1000 Hz, 224×224 RGB) ]
            │
            ▼
 ┌────────────────────────────────────────────────────────┐
@@ -94,7 +94,7 @@ graph TD
 │                         │                              │
 │                         ▼                              │
 │        [ Multi-Head Self-Attention (8 Heads) ]         │
-│          (Spatial & Temporal Cycle Attention)          │
+│          (Spatial & Temporal Token Attention)          │
 │                         │                              │
 │                         ▼                              │
 │           [ LayerNorm + Residual Skip ]                │
@@ -103,38 +103,39 @@ graph TD
 │         [ Global Average Pooling (GAP) ]               │
 │                         │                              │
 │                         ▼                              │
-│           [ Multi-Layer Perceptron Head ]              │
+│     [ Multi-Layer Perceptron Head (41.9 M params) ]    │
 └────────────────────────────────────────────────────────┘
            │
      ┌─────┴─────────────────────────────────────┐
      ▼                                           ▼
 [ Prediction ]                             [ XAI Explanations ]
 Normal vs. Abnormal                        ├─ Grad-CAM (Bottleneck Activations)
-(90.79% Acc, 0.946 AUC)                    ├─ Multi-Head Attention Maps
-                                           └─ SHAP Frequency Importance
+(90.79% Acc, 0.946 AUC)                    ├─ Mean Attention Maps
+                                           └─ SHAP Frequency Importance (GradientExplainer)
 ```
 
 </details>
 
 ### 1. Robust Audio Preprocessing Pipeline (Phase 1)
-- **Artifact Removal:** 4th-order zero-phase Butterworth bandpass filtering (25 Hz to 400 Hz) removing low-frequency respiratory drift and high-frequency acoustic interference.
-- **Sampling Normalization:** Uniform resample to 2,000 Hz.
-- **Duration Standardization:** Standardized to 5.0 seconds via circular padding or periodic replication.
-- **Time-Frequency Representation:** Extracted Log-Mel Spectrograms with 128 mel bins ($n_{\text{fft}} = 1024$, hop length $= 256$) normalized and replicated across 3 channels ($224 \times 224 \times 3$).
-- **Data Augmentation:** SpecAugment (time and frequency masking), random temporal cropping, and additive Gaussian noise.
+- **Artifact Removal:** 4th-order zero-phase Butterworth bandpass filtering (25 Hz to 900 Hz) suppressing baseline drift below 25 Hz and acoustic hiss above 900 Hz.
+- **Sampling Normalization:** Uniform resample to 4,000 Hz.
+- **Duration Standardization:** Standardized to 8.0 seconds (32,000 samples) via zero-padding or onset cropping.
+- **Time-Frequency Representation:** Extracted Log-Mel Spectrograms with 128 mel bands ($n_{\text{fft}} = 512$, hop length $= 128$) using the default librosa (Slaney) mel scale (20 to 1000 Hz, linear below 1 kHz), normalized and bilinearly resized to $224 \times 224 \times 3$.
+- **Data Augmentation:** SpecAugment (frequency masking width 1 to 17 bands, time masking width 1 to 24 frames).
 
 ### 2. Hybrid Attention Architecture (Phase 2)
-- **Deep Feature Representation:** ImageNet-pretrained ResNet50 extracting 2048-dimensional high-level feature maps.
-- **Squeeze-and-Excitation (SE):** Channel-wise dynamic calibration modeling non-linear inter-channel relationships (reduction ratio $r = 16$).
-- **Multi-Head Self-Attention (MHSA):** 8 attention heads processing flattened spatial feature tokens ($7 \times 7 = 49$ tokens) to learn contextual dependencies across complete systolic and diastolic cycles.
+- **Deep Feature Representation:** ImageNet-pretrained ResNet50 extracting 2048-dimensional high-level feature maps (23.5 M parameters).
+- **Squeeze-and-Excitation (SE):** Channel-wise dynamic calibration modeling inter-channel relationships (reduction ratio $r = 16$, 0.52 M parameters).
+- **Multi-Head Self-Attention (MHSA):** 8 attention heads processing flattened spatial feature tokens ($7 \times 7 = 49$ tokens, key dimension $d_k=256$, 16.8 M parameters).
+- **Classifier Head:** Global average pooling, dropout (0.4), 512-unit linear layer with ReLU, dropout (0.2), and 2-unit projection (1.05 M parameters, 41.9 M parameters total).
 - **Two-Stage Training Protocol:**
-  - *Stage 1 (Warm-up):* Frozen backbone; optimizing SE blocks, attention heads, and MLP classifier (AdamW, $\text{lr} = 10^{-3}$, cosine annealing).
-  - *Stage 2 (Fine-Tuning):* Unfreezing `layer3` and `layer4` with differential learning rates ($\text{lr}_{\text{backbone}} = 10^{-5}$, $\text{lr}_{\text{head}} = 10^{-4}$) with inverse-frequency weighted cross-entropy loss.
+  - *Stage 1 (Warm-up, epochs 1 to 10):* Frozen backbone weights; optimizing SE block, attention layer, and MLP classifier (18.4 M parameters) with AdamW ($\text{lr} = 3\times 10^{-4}$ decaying to $10^{-6}$ via cosine annealing). Backbone BatchNorm layers stay in training mode to adapt running statistics.
+  - *Stage 2 (Fine-Tuning, epochs 11 to 40):* All 41.9 M parameters trained with AdamW ($\text{lr} = 3\times 10^{-5}$ decaying to $10^{-7}$) with class-weighted, label-smoothed cross-entropy loss ($\alpha = 0.05$).
 
-### 3. Tripartite Explainability Suite
-- **Grad-CAM (Gradient-Weighted Class Activation Mapping):** Visualizes spatial heatmaps from the final bottleneck block (`layer4[-1]`), confirming precise focus on systolic or diastolic murmur time-frequency bands.
-- **Attention Map Visualizations:** Multi-head attention rollout distributions tracing cross-token dependencies across the cardiac cycle.
-- **SHAP (SHapley Additive exPlanations):** DeepExplainer and KernelExplainer attributions measuring feature importance across individual mel-frequency bins (revealing critical diagnostic weight in the 50–250 Hz range).
+### 3. Three-Part Explainability Suite
+- **Grad-CAM (Gradient-Weighted Class Activation Mapping):** Visualizes spatial heatmaps from the final bottleneck block (`layer4[-1]`), upsampled bilinearly from $7 \times 7$ grid (~1.14 s per cell).
+- **Spatial Attention Maps:** Mean spatial attention maps averaged across heads and queries directly from the single self-attention layer (no recursive attention rollout needed).
+- **SHAP (SHapley Additive exPlanations):** GradientExplainer feature attributions approximating Shapley values across mel-frequency bands.
 
 ---
 
@@ -154,13 +155,14 @@ Evaluated on the held-out test split of **532 samples** (stratified 70/15/15 tra
 
 ### Comparative Benchmark
 
-| Architecture / Framework | Methodology | Accuracy | AUC-ROC | Explainability |
-| :--- | :--- | :---: | :---: | :---: |
-| Li et al. (2025) | Multi-Scale CNN + Channel Attention | 86.80% | — | Limited (CAM only) |
-| Ren et al. (2022) | Deep Attention Pooling | 87.20% | 0.910 | Global Attention |
-| Padhy et al. (2025) | X-CBNet (CNN + BiLSTM) | 99.15% | — | LIME / Feature importance |
-| Alrabie & Barnawi (2025) | SE + Multi-Head Attention | 91.20% | 0.941 | Attention weights |
-| **Our Proposed Framework** | **ResNet50 + SE + MHSA** | **90.79%** | **0.946** | **Grad-CAM + Attention + SHAP** |
+| Study | Dataset | Classes | Model | Accuracy (%) | AUC | Explanation |
+| :--- | :--- | :---: | :--- | :---: | :---: | :--- |
+| Li et al. (2020) | PhysioNet 2016 | 2 | Multi-scale CNN, GAP | 86.80 | N/R | None |
+| Ren et al. (2022) | HSS | 3 | CNN, attention pooling | UAR 51.2 | N/R | Frame attention |
+| Padhy et al. (2025) | PhysioNet 2016 subset (2,400, balanced) | 5 | CNN and BiLSTM | 99.15 | 0.99 | Saliency |
+| Althaph and Challa (2025) | HeartWave; PhysioNet 2016 | 9; 2 | Heart sound transformer | 96.7; 90.3 | N/R | Attention |
+| Alrabie and Barnawi (2025) | HeartWave (segmented) | 4 | ResNet50, SE, MHA | 97.3 | N/R | Grad-CAM (mIoU 82%) |
+| **This work** | **PhysioNet 2016 (full)** | **2** | **ResNet50, SE, 8-head MHSA** | **90.79** | **0.9457** | **Grad-CAM, attention, SHAP** |
 
 ---
 
@@ -213,7 +215,7 @@ Evaluated on the held-out test split of **532 samples** (stratified 70/15/15 tra
     ├── model.py                                  # ResNet50 + SE + MultiHeadAttention
     ├── train.py                                  # Two-stage training engine with AMP
     ├── evaluate.py                               # Test set evaluation & metric reporting
-    ├── xai.py                                    # Grad-CAM, Attention rollout, and SHAP
+    ├── xai.py                                    # Grad-CAM, mean attention maps, and SHAP
     ├── config.py                                 # Hyperparameter and path configurations
     ├── data.py                                   # PyTorch Dataset and DataLoader loaders
     ├── utils.py                                  # Literature comparison & sample picker

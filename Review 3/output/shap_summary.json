@@ -1,0 +1,15 @@
+{
+  "cutoff_hz": 400,
+  "axis_share_below_cutoff": 0.38839285714285715,
+  "axis_share_below_cutoff_pct": 38.84,
+  "class_shares_below_cutoff": {
+    "class_0": 0.4257238410778775,
+    "class_1": 0.42867062850842463
+  },
+  "class_shares_below_cutoff_pct": {
+    "class_0_pct": 42.57,
+    "class_1_pct": 42.87
+  },
+  "mean_shap_share_below_cutoff": 0.42716322239989357,
+  "mean_shap_share_below_cutoff_pct": 42.72
+}

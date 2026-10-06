@@ -83,9 +83,12 @@ def train_one_epoch(model: HeartSoundModel,
                     device: str,
                     grad_clip: float,
                     scaler: Optional["torch.amp.GradScaler"] = None,
-                    use_amp: bool = False
+                    use_amp: bool = False,
+                    freeze_bn: bool = False
                    ) -> Dict[str, float]:
     model.train()
+    if freeze_bn:
+        model.feature_extractor.eval()
     total_loss, correct, total = 0.0, 0, 0
 
     autocast_ctx = (torch.amp.autocast("cuda") if (use_amp and device == "cuda")
@@ -201,7 +204,8 @@ def train(model: HeartSoundModel,
 
     for epoch in range(warmup):
         tr = train_one_epoch(model, train_loader, optimizer, criterion,
-                             device, train_cfg.grad_clip, scaler, use_amp)
+                             device, train_cfg.grad_clip, scaler, use_amp,
+                             freeze_bn=train_cfg.freeze_bn)
         va = validate(model, val_loader, criterion, device)
         scheduler.step()
 
@@ -220,13 +224,15 @@ def train(model: HeartSoundModel,
     if remaining > 0:
         print(f"\n[Phase B] Fine-tune: backbone unfrozen, {remaining} epochs, lr={train_cfg.lr_full:g}")
         model.unfreeze_backbone()
+        model.feature_extractor.train()
         optimizer = _make_optimizer(model, train_cfg.lr_full,
                                     train_cfg.weight_decay, only_trainable=False)
         scheduler = CosineAnnealingLR(optimizer, T_max=remaining, eta_min=1e-7)
 
         for epoch in range(warmup, train_cfg.num_epochs):
             tr = train_one_epoch(model, train_loader, optimizer, criterion,
-                                 device, train_cfg.grad_clip, scaler, use_amp)
+                                 device, train_cfg.grad_clip, scaler, use_amp,
+                                 freeze_bn=False)
             va = validate(model, val_loader, criterion, device)
             scheduler.step()
 

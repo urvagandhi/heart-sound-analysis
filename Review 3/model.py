@@ -78,15 +78,22 @@ class HeartSoundModel(nn.Module):
         # Bottleneck block of ResNet50 — the conventional Grad-CAM target.
         self.backbone_last_conv = self.feature_extractor[-1][-1]
 
-        self.se = SEBlock(cfg.feature_dim, reduction=cfg.se_reduction)
+        if cfg.use_se:
+            self.se = SEBlock(cfg.feature_dim, reduction=cfg.se_reduction)
+        else:
+            self.se = nn.Identity()
 
-        self.mha = nn.MultiheadAttention(
-            embed_dim=cfg.feature_dim,
-            num_heads=cfg.num_heads,
-            dropout=cfg.mha_dropout,
-            batch_first=True,
-        )
-        self.norm = nn.LayerNorm(cfg.feature_dim)
+        if cfg.use_mha:
+            self.mha = nn.MultiheadAttention(
+                embed_dim=cfg.feature_dim,
+                num_heads=cfg.num_heads,
+                dropout=cfg.mha_dropout,
+                batch_first=True,
+            )
+            self.norm = nn.LayerNorm(cfg.feature_dim)
+        else:
+            self.mha = nn.Identity()
+            self.norm = nn.Identity()
 
         self.gap = nn.AdaptiveAvgPool1d(1)
 
@@ -114,19 +121,22 @@ class HeartSoundModel(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (B, 3, 224, 224)
         f = self.feature_extractor(x)            # (B, 2048, 7, 7)
-        f = self.se(f)                           # SE channel attention
+        if self.cfg.use_se:
+            f = self.se(f)                       # SE channel attention
 
         B, C, H, W = f.shape
         tokens = f.view(B, C, H * W).permute(0, 2, 1)   # (B, 49, 2048)
 
-        # Self-attention with attention-weights kept for XAI
-        attn_out, attn_weights = self.mha(
-            tokens, tokens, tokens,
-            need_weights=True, average_attn_weights=True,
-        )
-        self.last_attention_weights = attn_weights.detach()   # (B, 49, 49)
-
-        tokens = self.norm(tokens + attn_out)               # residual + LN
+        if self.cfg.use_mha:
+            # Self-attention with attention-weights kept for XAI
+            attn_out, attn_weights = self.mha(
+                tokens, tokens, tokens,
+                need_weights=True, average_attn_weights=True,
+            )
+            self.last_attention_weights = attn_weights.detach()   # (B, 49, 49)
+            tokens = self.norm(tokens + attn_out)               # residual + LN
+        else:
+            self.last_attention_weights = None
 
         pooled = self.gap(tokens.permute(0, 2, 1)).squeeze(-1)   # (B, 2048)
         return self.classifier(pooled)                            # (B, C)

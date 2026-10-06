@@ -20,12 +20,12 @@ import pandas as pd
 LITERATURE = [
     {"Paper": "Li et al. (2020)",              "Dataset": "PhysioNet 2016",
      "Classes": 2, "Accuracy": 86.8, "F1": "—",   "AUC": "—",  "XAI": "None"},
-    {"Paper": "Ren et al. (2021)",             "Dataset": "HSS",
-     "Classes": 3, "Accuracy": "—",  "F1": "—",   "AUC": "—",  "XAI": "Attn"},
-    {"Paper": "Alrabie & Barnawi (2025)",      "Dataset": "HeartWave",
+    {"Paper": "Ren et al. (2022)",             "Dataset": "HSS",
+     "Classes": 3, "Accuracy": "— (HSS)", "F1": "—", "AUC": "—",  "XAI": "Frame attention (UAR 51.2)"},
+    {"Paper": "Alrabie & Barnawi (2025)",      "Dataset": "HeartWave (seg)",
      "Classes": 4, "Accuracy": 97.3, "F1": "—",   "AUC": "—",  "XAI": "Grad-CAM"},
-    {"Paper": "Padhy et al. (2025)",           "Dataset": "PhysioNet 2016",
-     "Classes": 5, "Accuracy": 99.15,"F1": "—",   "AUC": 0.99, "XAI": "Grad-CAM"},
+    {"Paper": "Padhy et al. (2025)",           "Dataset": "PhysioNet 2016 subset (2,400, bal)",
+     "Classes": 5, "Accuracy": 99.15,"F1": "—",   "AUC": 0.99, "XAI": "Saliency"},
 ]
 
 

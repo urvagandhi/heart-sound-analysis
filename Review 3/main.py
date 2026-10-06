@@ -25,6 +25,7 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 
 # Allow running both as `python main.py` and `python Review\ 3/main.py`
@@ -41,11 +42,11 @@ from model    import build_model
 from train    import train, plot_training_history
 from evaluate import (
     evaluate_on_test, plot_confusion_matrix, plot_roc_pr_curves,
-    save_predictions_csv,
+    save_predictions_csv, compute_and_save_extended_metrics,
 )
 from xai      import (
     visualise_gradcam, visualise_attention,
-    compute_shap_values, plot_shap_frequency_importance,
+    compute_shap_values, frequency_share, plot_shap_frequency_importance,
     plot_shap_sample_overlays,
 )
 from utils    import build_comparison_table, pick_explainable_indices, metrics_to_dict
@@ -70,7 +71,19 @@ def parse_args() -> argparse.Namespace:
                    help="Skip Grad-CAM / attention plots.")
     p.add_argument("--skip-shap",  action="store_true",
                    help="Skip SHAP (which can be slow on CPU).")
+    p.add_argument("--shap-n",     type=int, default=32,
+                   help="Number of balanced test samples for SHAP.")
     p.add_argument("--num-workers", type=int, default=None)
+    p.add_argument("--dedup",      action="store_true",
+                   help="Use deduplicated split and metadata (Review 3/output_dedup).")
+    p.add_argument("--freeze-bn",  action="store_true",
+                   help="Freeze BatchNorm running stats during warm-up phase.")
+    p.add_argument("--no-se",      action="store_true",
+                   help="Disable SE block (use Identity).")
+    p.add_argument("--no-mha",     action="store_true",
+                   help="Disable MHA layer (use Identity).")
+    p.add_argument("--tag",        type=str, default=None,
+                   help="Suffix tag for output and checkpoint folders.")
     return p.parse_args()
 
 
@@ -87,6 +100,8 @@ def _apply_overrides(args, train_cfg: TrainConfig) -> TrainConfig:
         train_cfg.use_amp = False
     if args.num_workers is not None:
         train_cfg.num_workers = args.num_workers
+    if args.freeze_bn:
+        train_cfg.freeze_bn = True
     return train_cfg
 
 
@@ -98,9 +113,9 @@ def main() -> None:
     args = parse_args()
 
     # 1) Config -------------------------------------------------
-    paths     = Paths.auto_detect(base_override=args.base)
+    paths     = Paths.auto_detect(base_override=args.base, dedup=args.dedup, tag=args.tag)
     audio_cfg = AudioConfig()
-    model_cfg = ModelConfig()
+    model_cfg = ModelConfig(use_se=not args.no_se, use_mha=not args.no_mha)
     train_cfg = _apply_overrides(args, TrainConfig())
 
     paths.ensure_output_dirs()
@@ -169,6 +184,8 @@ def main() -> None:
     with open(paths.output_dir / "test_metrics.json", "w") as f:
         json.dump(metrics_to_dict(metrics), f, indent=2)
 
+    compute_and_save_extended_metrics(metrics, test_df, train_df, paths.output_dir)
+
     # 6) XAI ----------------------------------------------------
     print("\n[5/5] Generating explanations ...")
     test_dataset = HeartSoundDataset(test_df, paths, model_cfg, augment=False)
@@ -186,10 +203,25 @@ def main() -> None:
 
     if not args.skip_shap:
         try:
-            shap_values, shap_inputs, shap_labels = compute_shap_values(
-                model, train_loader, test_loader, device,
-                n_background=32, n_explain=8,
+            shap_values, shap_inputs, shap_labels, shap_indices = compute_shap_values(
+                model, train_loader, test_dataset, device,
+                n_background=32, n_explain=args.shap_n, seed=42,
             )
+            # Save outputs/shap_values.npz
+            np.savez(
+                paths.output_dir / "shap_values.npz",
+                shap_class_0=shap_values[0],
+                shap_class_1=shap_values[1],
+                inputs=shap_inputs.numpy() if isinstance(shap_inputs, torch.Tensor) else np.asarray(shap_inputs),
+                labels=shap_labels.numpy() if isinstance(shap_labels, torch.Tensor) else np.asarray(shap_labels),
+                test_row_indices=shap_indices,
+            )
+            print(f"  Saved: {paths.output_dir / 'shap_values.npz'}")
+
+            # Compute and save frequency share
+            frequency_share(shap_values, audio_cfg, cutoff_hz=400.0,
+                            output_path=paths.output_dir / "shap_summary.json")
+
             plot_shap_frequency_importance(
                 shap_values, audio_cfg, CLASS_NAMES,
                 save_path=paths.output_dir / "shap_frequency_importance.png")

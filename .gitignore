@@ -75,9 +75,11 @@ desktop.ini
 *.swp
 *.swo
 
-# Large Model Checkpoints
+# Large Model Checkpoints and Data Arrays
 *.pth
 *.ckpt
+*.npz
 
 # Nested cloned repositories and tooling
 humanizer_repo/
+audit_scratch/

@@ -22,8 +22,7 @@ Primary Role in Project:
 Project Extensions Beyond Alrabie and Barnawi:
   * Dataset: Evaluated on unsegmented 8-second PCG recordings from PhysioNet/CinC 2016 (rather than segmented HeartWave audio).
   * Multi-Head Spatial Attention: Extracted and averaged spatial attention weights across heads and queries.
-  * Attribution Profiling: Integrated Kernel and Gradient SHAP to compute frequency attribution bands across 128 mel filterbanks.
-  * Acoustic Scale Calibration: Adjusted visualization axes to true non-linear mel center frequencies rather than linear approximations.
+  * Attribution Profiling: Integrated Gradient SHAP to compute frequency attribution bands across 128 mel filterbanks.
 
 ==============================================================
 RANK 2: PRIMARY DATASET AND BENCHMARK REFERENCE
@@ -45,7 +44,7 @@ Paper A:
 
 Paper B:
   Z. Ren et al., "Deep attention-based neural networks for explainable heart sound classification," 2022.
-  Role: Established attention pooling benchmark on unsegmented PhysioNet 2016 recordings (87.20% accuracy, 0.910 AUC).
+  Role: Evaluated CNN with attention pooling on the three-class Heart Sounds Shenzhen (HSS) dataset (UAR 51.2%).
 
 ==============================================================
 RANK 4: SPECTROGRAM AND VALVULAR DISORDER REFERENCE
@@ -58,6 +57,7 @@ Paper:
 RANK 5: FOUNDATIONAL XAI AND SURVEY LITERATURE (LEAST USED)
 ==============================================================
 Papers:
+  * J. Adebayo et al., "Sanity checks for saliency maps," Proc. NeurIPS, vol. 31, 2018 (demonstrating potential unreliability and label insensitivity of simple gradient saliency methods, motivating multi-method XAI evaluation).
   * S. Chakrabarty et al., "Can We Trust AI with Our Ears? A Cross-Domain Comparative Analysis of Explainability in Audio Intelligence," IEEE Access, vol. 13, 2025.
   * World Health Organization, "Cardiovascular diseases (CVDs)" fact sheet.
   * Foundational machine learning references: ResNet (He et al., 2016), SE networks (Hu et al., 2018), Transformer attention (Vaswani et al., 2017), Grad-CAM (Selvaraju et al., 2017) and SHAP (Lundberg & Lee, 2017).

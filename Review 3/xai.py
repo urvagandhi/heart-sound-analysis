@@ -56,6 +56,7 @@ def _heatmap_overlay(image: np.ndarray, heatmap: np.ndarray,
 def _mel_frequencies(n_mels: int = 128, fmin: float = 20.0, fmax: float = 1000.0) -> np.ndarray:
     """Return center frequencies for n_mels mel filterbanks.
     Uses librosa if available; falls back to pure numpy implementation matching librosa.
+    librosa default (Slaney) scale; linear below 1 kHz.
     """
     try:
         import librosa
@@ -66,20 +67,22 @@ def _mel_frequencies(n_mels: int = 128, fmin: float = 20.0, fmax: float = 1000.0
         logstep = np.log(6.4) / 27.0
 
         def hz_to_mel(f):
-            f = np.asanyarray(f)
-            m = (f - f_min) / f_sp
-            log_t = f >= min_log_hz
+            """librosa default (Slaney) scale; linear below 1 kHz"""
+            f_arr = np.atleast_1d(f).astype(float)
+            m = (f_arr - f_min) / f_sp
+            log_t = f_arr >= min_log_hz
             if np.any(log_t):
-                m[log_t] = min_log_mel + np.log(f[log_t] / min_log_hz) / logstep
-            return m
+                m[log_t] = min_log_mel + np.log(f_arr[log_t] / min_log_hz) / logstep
+            return m[0] if np.ndim(f) == 0 else m
 
         def mel_to_hz(m):
-            m = np.asanyarray(m)
-            f = f_min + f_sp * m
-            log_t = m >= min_log_mel
+            """librosa default (Slaney) scale; linear below 1 kHz"""
+            m_arr = np.atleast_1d(m).astype(float)
+            f = f_min + f_sp * m_arr
+            log_t = m_arr >= min_log_mel
             if np.any(log_t):
-                f[log_t] = min_log_hz * np.exp(logstep * (m[log_t] - min_log_mel))
-            return f
+                f[log_t] = min_log_hz * np.exp(logstep * (m_arr[log_t] - min_log_mel))
+            return f[0] if np.ndim(m) == 0 else f
 
         mels = np.linspace(hz_to_mel(fmin), hz_to_mel(fmax), n_mels)
         return mel_to_hz(mels)
@@ -88,7 +91,7 @@ def _mel_frequencies(n_mels: int = 128, fmin: float = 20.0, fmax: float = 1000.0
 def _setup_mel_axis(ax, audio_cfg: AudioConfig, img_h: int = 224,
                     ticks_hz: Sequence[int] = (100, 200, 400, 600, 800, 1000)):
     """Configure y-axis ticks and labels on a resized mel spectrogram
-    so ticks reflect the non-linear mel filterbank center frequencies."""
+    so ticks reflect the Slaney mel filterbank center frequencies (linear below 1 kHz)."""
     mf = _mel_frequencies(n_mels=audio_cfg.n_mels, fmin=audio_cfg.fmin, fmax=audio_cfg.fmax)
     rows = np.interp(ticks_hz, mf, np.arange(audio_cfg.n_mels)) / (audio_cfg.n_mels - 1) * (img_h - 1)
     ax.set_yticks(rows)
@@ -242,6 +245,9 @@ def visualise_attention(model: HeartSoundModel,
     import matplotlib.pyplot as plt
 
     model.eval()
+    if getattr(model, "cfg", None) and not model.cfg.use_mha:
+        print("  [Attention] Model does not use MHA; skipping attention visualisation.")
+        return
     n = len(indices)
     fig, axes = plt.subplots(n, 2, figsize=(10, 3.6 * n))
     if n == 1:
@@ -300,12 +306,16 @@ def visualise_attention(model: HeartSoundModel,
 
 def compute_shap_values(model: HeartSoundModel,
                         background_loader,
-                        explain_loader,
+                        explain_source,
                         device: str,
                         n_background: int = 32,
-                        n_explain: int = 8):
+                        n_explain: int = 32,
+                        seed: int = 42,
+                        test_indices: Optional[Sequence[int]] = None):
     """Use SHAP's GradientExplainer — robust with custom heads (MHA), unlike
-    DeepExplainer.  Returns: (shap_values, inputs, labels).
+    DeepExplainer. Selects balanced test samples (n_explain/2 per class)
+    using seed 42 if explain_source is a dataset.
+    Returns: (shap_values, inputs, labels, chosen_indices).
     """
     import shap
 
@@ -317,14 +327,45 @@ def compute_shap_values(model: HeartSoundModel,
             break
     background = torch.cat(bg)[:n_background].to(device)
 
-    inp, lab, used = [], [], 0
-    for X, y in explain_loader:
-        inp.append(X); lab.append(y)
-        used += len(X)
-        if used >= n_explain:
-            break
-    inputs = torch.cat(inp)[:n_explain].to(device)
-    labels = torch.cat(lab)[:n_explain]
+    # Determine balanced test samples
+    if test_indices is not None:
+        chosen_indices = np.asarray(test_indices)
+        inputs_list = []
+        labels_list = []
+        for idx in chosen_indices:
+            x, y = explain_source[idx]
+            inputs_list.append(x.unsqueeze(0) if x.ndim == 3 else x)
+            labels_list.append(y if isinstance(y, torch.Tensor) else torch.tensor(y))
+        inputs = torch.cat(inputs_list, dim=0).to(device)
+        labels = torch.stack(labels_list)
+    elif hasattr(explain_source, "df"):
+        rng = np.random.RandomState(seed)
+        df = explain_source.df
+        norm_idx = np.where(df["label"].values == 0)[0]
+        abn_idx = np.where(df["label"].values == 1)[0]
+        n_per = n_explain // 2
+        sel_norm = rng.choice(norm_idx, size=min(n_per, len(norm_idx)), replace=False)
+        sel_abn = rng.choice(abn_idx, size=min(n_per, len(abn_idx)), replace=False)
+        chosen_indices = np.concatenate([sel_norm, sel_abn])
+        inputs_list = []
+        labels_list = []
+        for idx in chosen_indices:
+            x, y = explain_source[idx]
+            inputs_list.append(x.unsqueeze(0) if x.ndim == 3 else x)
+            labels_list.append(y if isinstance(y, torch.Tensor) else torch.tensor(y))
+        inputs = torch.cat(inputs_list, dim=0).to(device)
+        labels = torch.stack(labels_list)
+    else:
+        # Fallback for loader
+        inp, lab, used = [], [], 0
+        for X, y in explain_source:
+            inp.append(X); lab.append(y)
+            used += len(X)
+            if used >= n_explain:
+                break
+        inputs = torch.cat(inp)[:n_explain].to(device)
+        labels = torch.cat(lab)[:n_explain]
+        chosen_indices = np.arange(len(inputs))
 
     model.eval()
     explainer  = shap.GradientExplainer(model, background)
@@ -343,7 +384,78 @@ def compute_shap_values(model: HeartSoundModel,
             shap_values = [arr[..., c] for c in range(arr.shape[-1])]
         else:
             shap_values = [arr]
-    return shap_values, inputs.detach().cpu(), labels
+    return shap_values, inputs.detach().cpu(), labels.cpu(), chosen_indices
+
+
+def frequency_share(shap_values,
+                    audio_cfg: AudioConfig,
+                    cutoff_hz: float = 400.0,
+                    output_path: Optional[Path] = None) -> Dict[str, object]:
+    """Calculate the share of total mean |SHAP| at band centres below cutoff_hz
+    per class, using librosa.mel_frequencies mapped to the 224 resized rows,
+    and the share of axis rows below cutoff_hz.
+    Writes both to output/shap_summary.json and prints them.
+    """
+    import json
+
+    if isinstance(shap_values, list):
+        shap_list = shap_values
+    else:
+        arr = np.asarray(shap_values)
+        shap_list = ([arr[..., c] for c in range(arr.shape[-1])]
+                     if arr.ndim == 5 else [arr])
+
+    img_size = shap_list[0].shape[-2]  # height H = 224
+    mf = _mel_frequencies(n_mels=audio_cfg.n_mels, fmin=audio_cfg.fmin, fmax=audio_cfg.fmax)
+    # Map band centres to resized rows
+    row_freqs = np.interp(np.linspace(0, audio_cfg.n_mels - 1, img_size),
+                          np.arange(audio_cfg.n_mels), mf)
+    below_cutoff_mask = row_freqs < cutoff_hz
+    axis_share = float(np.mean(below_cutoff_mask))
+
+    class_shares = {}
+    per_class_pct = {}
+    for c, sv in enumerate(shap_list):
+        sv_arr = np.asarray(sv)
+        importance = np.abs(sv_arr).mean(axis=(0, 1)).mean(axis=1)  # (H,)
+        total_importance = float(np.sum(importance))
+        below_importance = float(np.sum(importance[below_cutoff_mask]))
+        share = float(below_importance / (total_importance + 1e-12))
+        class_shares[f"class_{c}"] = share
+        per_class_pct[f"class_{c}_pct"] = round(share * 100, 2)
+
+    all_sv = np.concatenate([np.asarray(sv) for sv in shap_list], axis=0)
+    all_importance = np.abs(all_sv).mean(axis=(0, 1)).mean(axis=1)
+    mean_share = float(np.sum(all_importance[below_cutoff_mask]) / (np.sum(all_importance) + 1e-12))
+
+    summary = {
+        "cutoff_hz": cutoff_hz,
+        "axis_share_below_cutoff": axis_share,
+        "axis_share_below_cutoff_pct": round(axis_share * 100, 2),
+        "class_shares_below_cutoff": class_shares,
+        "class_shares_below_cutoff_pct": per_class_pct,
+        "mean_shap_share_below_cutoff": mean_share,
+        "mean_shap_share_below_cutoff_pct": round(mean_share * 100, 2),
+    }
+
+    print("\n" + "=" * 60)
+    print("  SHAP Frequency Attribution Summary")
+    print("=" * 60)
+    print(f"  Cutoff frequency: {cutoff_hz} Hz")
+    print(f"  Axis share below cutoff: {axis_share:.4f} ({axis_share*100:.2f}%)")
+    for c_key, c_share in class_shares.items():
+        print(f"  {c_key} share below cutoff: {c_share:.4f} ({c_share*100:.2f}%)")
+    print(f"  Mean attribution share below cutoff: {mean_share:.4f} ({mean_share*100:.2f}%)")
+    print("=" * 60)
+
+    if output_path is not None:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=2)
+        print(f"  Saved: {output_path}")
+
+    return summary
 
 
 def plot_shap_frequency_importance(shap_values,

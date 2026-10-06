@@ -1,0 +1,9 @@
+subset,N,normal,abnormal,accuracy,normal_accuracy,abnormal_accuracy
+training-a,62,17,45,79.03,70.59,82.22
+training-b,54,42,12,79.63,80.95,75.0
+training-c,3,1,2,66.67,100.0,50.0
+training-d,11,6,5,45.45,33.33,60.0
+training-e,338,306,32,99.11,99.35,96.88
+training-f,20,15,5,50.0,53.33,40.0
+validation,44,22,22,88.64,81.82,95.45
+All,532,409,123,90.79,92.67,84.55

@@ -66,24 +66,38 @@ class Paths:
     checkpoint_dir: Path
 
     @staticmethod
-    def from_base(base_dir: Path, output_subdir: str = "Review 3/output") -> "Paths":
+    def from_base(base_dir: Path, output_subdir: str = "Review 3/output",
+                  dedup: bool = False, tag: Optional[str] = None) -> "Paths":
         base = Path(base_dir)
         data = base / "physionet_2016"
-        out  = base / output_subdir
+        if dedup:
+            meta_name = "metadata_dedup.csv"
+            split_name = "split_indices_dedup.json"
+            out_name = "Review 3/output_dedup"
+        else:
+            meta_name = "metadata.csv"
+            split_name = "split_indices.json"
+            out_name = output_subdir
+        if tag:
+            out_name = f"{out_name}_{tag}"
+        out = base / out_name
         return Paths(
             base_dir           = base,
             data_dir           = data,
             raw_dir            = data / "raw",
             spec_dir           = data / "spectrograms",
-            metadata_csv       = data / "metadata.csv",
-            split_indices_json = data / "split_indices.json",
-            class_weights_pt   = data / "class_weights.pt",
+            metadata_csv       = data / meta_name,
+            split_indices_json = data / split_name,
+            class_weights_pt   = data / ("class_weights_dedup.pt" if dedup else "class_weights.pt"),
             output_dir         = out,
             checkpoint_dir     = out / "checkpoints",
         )
 
     @staticmethod
-    def auto_detect(base_override: Optional[str] = None) -> "Paths":
+    def auto_detect(base_override: Optional[str] = None,
+                    output_subdir: str = "Review 3/output",
+                    dedup: bool = False,
+                    tag: Optional[str] = None) -> "Paths":
         """Pick Drive base on Colab (if mounted), else local base."""
         if base_override:
             base = Path(base_override).expanduser().resolve()
@@ -91,7 +105,7 @@ class Paths:
             base = DEFAULT_DRIVE_BASE
         else:
             base = DEFAULT_LOCAL_BASE
-        return Paths.from_base(base)
+        return Paths.from_base(base, output_subdir=output_subdir, dedup=dedup, tag=tag)
 
     def ensure_output_dirs(self) -> None:
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -135,6 +149,8 @@ class ModelConfig:
     se_reduction: int   = 16
     img_size: int       = 224          # ResNet50 input
     feature_dim: int    = 2048         # ResNet50 final channel count
+    use_se: bool        = True
+    use_mha: bool       = True
 
 
 # ─────────────────────────────────────────────────────────────
@@ -160,6 +176,7 @@ class TrainConfig:
     seed: int              = 42
     use_class_weights: bool = True
     use_amp: bool          = True      # mixed precision when on CUDA
+    freeze_bn: bool        = False
 
 
 CLASS_NAMES = ["Normal", "Abnormal"]   # index 0 = Normal, 1 = Abnormal
