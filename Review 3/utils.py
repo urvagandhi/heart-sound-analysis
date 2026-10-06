@@ -70,31 +70,44 @@ def build_comparison_table(metrics: Dict, save_path: Path) -> pd.DataFrame:
 def pick_explainable_indices(metrics: Dict, n_correct: int = 2,
                              n_wrong: int = 2,
                              rng_seed: int = 42) -> List[int]:
-    """Pick a mix of correct and misclassified test samples for XAI plots."""
-    labels = metrics["labels"]; preds = metrics["preds"]
-    probs  = metrics["probs"]
-
-    correct_mask = preds == labels
-    correct_idx  = np.where(correct_mask)[0]
-    wrong_idx    = np.where(~correct_mask)[0]
+    """Pick a mix of correct and misclassified test samples for XAI plots.
+    Selects confident correct cases per class (e.g., confident Normal and
+    confident Abnormal) plus misclassified cases (False Positives and False Negatives).
+    """
+    labels = np.asarray(metrics["labels"])
+    preds  = np.asarray(metrics["preds"])
+    probs  = np.asarray(metrics["probs"])
 
     rng = np.random.default_rng(rng_seed)
     picks: List[int] = []
 
-    if len(correct_idx) > 0:
-        # Sort correct by margin (highest confidence first) and sample evenly
-        if probs.shape[1] == 2:
-            margins = np.abs(probs[correct_idx, 1] - probs[correct_idx, 0])
-        else:
-            top2 = np.sort(probs[correct_idx], axis=1)
-            margins = top2[:, -1] - top2[:, -2]
-        order = correct_idx[np.argsort(-margins)]
-        picks.extend(order[:n_correct].tolist())
+    # 1. Confident correct per class
+    unique_classes = np.unique(labels)
+    n_per_class = max(1, n_correct // len(unique_classes)) if len(unique_classes) > 0 else 1
+    for c in unique_classes:
+        c_correct = np.where((labels == c) & (preds == c))[0]
+        if len(c_correct) > 0:
+            c_conf = probs[c_correct, c]
+            order = c_correct[np.argsort(-c_conf)]
+            picks.extend(order[:n_per_class].tolist())
 
+    # 2. Misclassified cases (errors)
+    wrong_idx = np.where(preds != labels)[0]
     if len(wrong_idx) > 0:
-        picks.extend(rng.choice(wrong_idx,
-                                size=min(n_wrong, len(wrong_idx)),
-                                replace=False).tolist())
+        fp_idx = np.where((labels == 0) & (preds == 1))[0]
+        fn_idx = np.where((labels == 1) & (preds == 0))[0]
+        wrong_picks = []
+        if len(fp_idx) > 0 and len(fn_idx) > 0 and n_wrong >= 2:
+            wrong_picks.append(int(rng.choice(fp_idx)))
+            wrong_picks.append(int(rng.choice(fn_idx)))
+            rem = n_wrong - 2
+            if rem > 0:
+                avail = [i for i in wrong_idx if i not in wrong_picks]
+                if avail:
+                    wrong_picks.extend(rng.choice(avail, size=min(rem, len(avail)), replace=False).tolist())
+        else:
+            wrong_picks = rng.choice(wrong_idx, size=min(n_wrong, len(wrong_idx)), replace=False).tolist()
+        picks.extend(wrong_picks)
 
     return picks
 

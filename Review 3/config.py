@@ -118,7 +118,7 @@ class AudioConfig:
     n_fft: int      = 512
     hop_length: int = 128
     n_mels: int     = 128
-    fmin: int       = 25      # aligned with bandpass low cutoff
+    fmin: int       = 20      # aligned with Phase 1 mel lower bound
     fmax: int       = 1000
 
 

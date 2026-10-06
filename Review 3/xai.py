@@ -53,13 +53,46 @@ def _heatmap_overlay(image: np.ndarray, heatmap: np.ndarray,
     return alpha * rgb_img + (1 - alpha) * hm_rgb
 
 
-def _spectrogram_axes(audio_cfg: AudioConfig, img_size: int):
-    """Return tick locations + labels so a 224×224 resized image can be
-    shown with real time/frequency axes."""
-    time_max = audio_cfg.duration                       # seconds
-    freq_max = audio_cfg.fmax
-    freq_min = audio_cfg.fmin
-    return time_max, freq_min, freq_max
+def _mel_frequencies(n_mels: int = 128, fmin: float = 20.0, fmax: float = 1000.0) -> np.ndarray:
+    """Return center frequencies for n_mels mel filterbanks.
+    Uses librosa if available; falls back to pure numpy implementation matching librosa.
+    """
+    try:
+        import librosa
+        return librosa.mel_frequencies(n_mels=n_mels, fmin=fmin, fmax=fmax)
+    except ImportError:
+        f_min, f_sp = 0.0, 200.0 / 3
+        min_log_hz, min_log_mel = 1000.0, (1000.0 - 0.0) / (200.0 / 3)
+        logstep = np.log(6.4) / 27.0
+
+        def hz_to_mel(f):
+            f = np.asanyarray(f)
+            m = (f - f_min) / f_sp
+            log_t = f >= min_log_hz
+            if np.any(log_t):
+                m[log_t] = min_log_mel + np.log(f[log_t] / min_log_hz) / logstep
+            return m
+
+        def mel_to_hz(m):
+            m = np.asanyarray(m)
+            f = f_min + f_sp * m
+            log_t = m >= min_log_mel
+            if np.any(log_t):
+                f[log_t] = min_log_hz * np.exp(logstep * (m[log_t] - min_log_mel))
+            return f
+
+        mels = np.linspace(hz_to_mel(fmin), hz_to_mel(fmax), n_mels)
+        return mel_to_hz(mels)
+
+
+def _setup_mel_axis(ax, audio_cfg: AudioConfig, img_h: int = 224,
+                    ticks_hz: Sequence[int] = (100, 200, 400, 600, 800, 1000)):
+    """Configure y-axis ticks and labels on a resized mel spectrogram
+    so ticks reflect the non-linear mel filterbank center frequencies."""
+    mf = _mel_frequencies(n_mels=audio_cfg.n_mels, fmin=audio_cfg.fmin, fmax=audio_cfg.fmax)
+    rows = np.interp(ticks_hz, mf, np.arange(audio_cfg.n_mels)) / (audio_cfg.n_mels - 1) * (img_h - 1)
+    ax.set_yticks(rows)
+    ax.set_yticklabels(ticks_hz)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -157,21 +190,24 @@ def visualise_gradcam(model: HeartSoundModel,
             pred_str = class_names[pred_class]
             correct  = (pred_class == int(true_label))
 
+            img_h = img.shape[0]
+            extent = [0, audio_cfg.duration, 0, img_h - 1]
+
             axes[row, 0].imshow(img, cmap="magma", origin="lower",
-                                aspect="auto", extent=[0, audio_cfg.duration,
-                                                       audio_cfg.fmin, audio_cfg.fmax])
+                                aspect="auto", extent=extent)
+            _setup_mel_axis(axes[row, 0], audio_cfg, img_h=img_h)
             axes[row, 0].set_title(f"Spectrogram\nTrue: {true_str}", fontsize=10)
             axes[row, 0].set_xlabel("Time (s)"); axes[row, 0].set_ylabel("Mel freq (Hz)")
 
             axes[row, 1].imshow(cam, cmap="jet", origin="lower", aspect="auto",
-                                extent=[0, audio_cfg.duration,
-                                        audio_cfg.fmin, audio_cfg.fmax])
+                                extent=extent)
+            _setup_mel_axis(axes[row, 1], audio_cfg, img_h=img_h)
             axes[row, 1].set_title("Grad-CAM (warm = high)", fontsize=10)
             axes[row, 1].set_xlabel("Time (s)")
 
             axes[row, 2].imshow(_heatmap_overlay(img, cam), origin="lower",
-                                aspect="auto", extent=[0, audio_cfg.duration,
-                                                        audio_cfg.fmin, audio_cfg.fmax])
+                                aspect="auto", extent=extent)
+            _setup_mel_axis(axes[row, 2], audio_cfg, img_h=img_h)
             colour = "green" if correct else "red"
             axes[row, 2].set_title(
                 f"Overlay\nPred: {pred_str} ({confidence:.1%})",
@@ -236,15 +272,18 @@ def visualise_attention(model: HeartSoundModel,
         true_str = class_names[int(true_label)]
         pred_str = class_names[pred_class]
 
+        img_h = img.shape[0]
+        extent = [0, audio_cfg.duration, 0, img_h - 1]
+
         axes[row, 0].imshow(img, cmap="magma", origin="lower", aspect="auto",
-                            extent=[0, audio_cfg.duration,
-                                    audio_cfg.fmin, audio_cfg.fmax])
+                            extent=extent)
+        _setup_mel_axis(axes[row, 0], audio_cfg, img_h=img_h)
         axes[row, 0].set_title(f"Spectrogram — True: {true_str}", fontsize=10)
         axes[row, 0].set_xlabel("Time (s)"); axes[row, 0].set_ylabel("Mel freq (Hz)")
 
         axes[row, 1].imshow(_heatmap_overlay(img, attn_up), origin="lower",
-                            aspect="auto", extent=[0, audio_cfg.duration,
-                                                    audio_cfg.fmin, audio_cfg.fmax])
+                            aspect="auto", extent=extent)
+        _setup_mel_axis(axes[row, 1], audio_cfg, img_h=img_h)
         axes[row, 1].set_title(f"MHA attention — Pred: {pred_str}", fontsize=10)
         axes[row, 1].set_xlabel("Time (s)")
 
@@ -329,26 +368,33 @@ def plot_shap_frequency_importance(shap_values,
     if n_classes == 1:
         axes = [axes]
 
-    img_size = shap_values[0].shape[-1]
-    freq_axis = np.linspace(audio_cfg.fmin, audio_cfg.fmax, img_size)
+    img_size = shap_values[0].shape[-2]  # height H = 224
+    mf = _mel_frequencies(n_mels=audio_cfg.n_mels, fmin=audio_cfg.fmin, fmax=audio_cfg.fmax)
+    ticks_hz = [100, 200, 400, 600, 800, 1000]
+    rows = np.interp(ticks_hz, mf, np.arange(audio_cfg.n_mels)) / (audio_cfg.n_mels - 1) * (img_size - 1)
+    y_axis = np.arange(img_size)
 
     for c, ax in enumerate(axes):
         sv = np.asarray(shap_values[c])           # (N, 3, H, W)
         # Mean |SHAP| across samples and channels, then mean across time
         importance = np.abs(sv).mean(axis=(0, 1)).mean(axis=1)    # (H,)
 
-        ax.plot(importance, freq_axis, color="#1F3A5F", linewidth=2)
-        ax.fill_betweenx(freq_axis, 0, importance, color="#378ADD", alpha=0.3)
+        ax.plot(importance, y_axis, color="#1F3A5F", linewidth=2)
+        ax.fill_betweenx(y_axis, 0, importance, color="#378ADD", alpha=0.3)
 
-        # Cardiac frequency bands
+        # Cardiac frequency bands mapped to mel row positions
         for lo, hi, colour, label in [
             (25,  150, "#E24B4A", "S1/S2 (25–150 Hz)"),
             (150, 500, "#EF9F27", "Murmur (150–500 Hz)"),
             (500, 900, "#6CA0DC", "High freq (500–900 Hz)"),
         ]:
-            ax.axhspan(lo, hi, alpha=0.10, color=colour, label=label)
+            y_lo = float(np.interp(lo, mf, np.arange(audio_cfg.n_mels)) / (audio_cfg.n_mels - 1) * (img_size - 1))
+            y_hi = float(np.interp(hi, mf, np.arange(audio_cfg.n_mels)) / (audio_cfg.n_mels - 1) * (img_size - 1))
+            ax.axhspan(y_lo, y_hi, alpha=0.10, color=colour, label=label)
 
-        ax.set_ylim(audio_cfg.fmin, audio_cfg.fmax)
+        ax.set_ylim(0, img_size - 1)
+        ax.set_yticks(rows)
+        ax.set_yticklabels(ticks_hz)
         ax.set_title(f"SHAP frequency importance — {class_names[c]}", fontsize=11)
         ax.set_xlabel("Mean |SHAP|"); ax.set_ylabel("Mel frequency (Hz)")
         ax.legend(fontsize=8, loc="upper right")
@@ -392,15 +438,18 @@ def plot_shap_sample_overlays(shap_values, inputs: torch.Tensor,
         attribution = np.abs(sv).mean(axis=0)         # (H, W)
 
         img = _denormalise(inputs[i])
+        img_h = img.shape[0]
+        extent = [0, audio_cfg.duration, 0, img_h - 1]
+
         axes[i, 0].imshow(img, cmap="magma", origin="lower", aspect="auto",
-                          extent=[0, audio_cfg.duration,
-                                  audio_cfg.fmin, audio_cfg.fmax])
+                          extent=extent)
+        _setup_mel_axis(axes[i, 0], audio_cfg, img_h=img_h)
         axes[i, 0].set_title(f"Spectrogram — {class_names[true_lab]}", fontsize=10)
         axes[i, 0].set_xlabel("Time (s)"); axes[i, 0].set_ylabel("Mel freq (Hz)")
 
         axes[i, 1].imshow(_heatmap_overlay(img, attribution), origin="lower",
-                          aspect="auto", extent=[0, audio_cfg.duration,
-                                                  audio_cfg.fmin, audio_cfg.fmax])
+                          aspect="auto", extent=extent)
+        _setup_mel_axis(axes[i, 1], audio_cfg, img_h=img_h)
         axes[i, 1].set_title("SHAP overlay (|attribution|)", fontsize=10)
         axes[i, 1].set_xlabel("Time (s)")
 
