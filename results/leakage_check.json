@@ -1,0 +1,11 @@
+{
+  "content_verification": "UNVERIFIED by content",
+  "total_legacy_test_rows": 532,
+  "legacy_test_twin_rows": 70,
+  "legacy_test_unique_rows": 462,
+  "accuracy_twin_rows": 0.9714285714285714,
+  "accuracy_unique_rows": 0.8982683982683982,
+  "accuracy_delta": 0.0731601731601732,
+  "total_validation_rows": 301,
+  "total_deduplicated_rows": 3240
+}

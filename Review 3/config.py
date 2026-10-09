@@ -66,38 +66,85 @@ class Paths:
     checkpoint_dir: Path
 
     @staticmethod
-    def from_base(base_dir: Path, output_subdir: str = "Review 3/output",
-                  dedup: bool = False, tag: Optional[str] = None) -> "Paths":
+    def from_base(base_dir: Path | str,
+                  output_subdir: str = "Review 3/output",
+                  dedup: bool = False,
+                  tag: Optional[str] = None,
+                  split: str = "legacy",
+                  holdout: Optional[str] = None,
+                  seed: int = 42,
+                  metadata_override: Optional[str | Path] = None,
+                  split_override: Optional[str | Path] = None,
+                  out_root: Optional[str | Path] = None) -> "Paths":
         base = Path(base_dir)
         data = base / "physionet_2016"
-        if dedup:
-            meta_name = "metadata_dedup.csv"
-            split_name = "split_indices_dedup.json"
-            out_name = "Review 3/output_dedup"
+
+        # Resolve metadata CSV
+        if metadata_override:
+            meta_path = Path(metadata_override)
+        elif split in ("dedup", "lodo") or dedup:
+            meta_path = data / "metadata_dedup.csv"
+            if not meta_path.exists():
+                meta_path = data / "metadata.csv"
         else:
-            meta_name = "metadata.csv"
-            split_name = "split_indices.json"
-            out_name = output_subdir
-        if tag:
-            out_name = f"{out_name}_{tag}"
-        out = base / out_name
+            meta_path = data / "metadata.csv"
+
+        # Resolve split JSON
+        if split_override:
+            split_path = Path(split_override)
+        elif split == "dedup":
+            candidate = data / "splits" / f"dedup_seed{seed}.json"
+            split_path = candidate if candidate.exists() else (data / "split_indices_dedup.json" if (data / "split_indices_dedup.json").exists() else data / "split_indices.json")
+        elif split == "lodo":
+            h = holdout or "a"
+            split_path = data / "splits" / f"lodo_hold{h}_seed{seed}.json"
+        elif dedup:
+            split_path = data / "split_indices_dedup.json" if (data / "split_indices_dedup.json").exists() else data / "split_indices.json"
+        else:
+            split_path = data / "split_indices.json"
+
+        # Resolve output directory
+        if out_root and tag:
+            out = Path(out_root) / tag
+            ckpt_dir = out
+        elif out_root:
+            out = Path(out_root)
+            ckpt_dir = out
+        elif tag:
+            out = base / "results" / tag
+            ckpt_dir = out
+        elif dedup:
+            out = base / "Review 3/output_dedup"
+            ckpt_dir = out / "checkpoints"
+        else:
+            out = base / output_subdir
+            ckpt_dir = out / "checkpoints"
+
+        class_weights_name = "class_weights_dedup.pt" if (split in ("dedup", "lodo") or dedup) else "class_weights.pt"
+
         return Paths(
             base_dir           = base,
             data_dir           = data,
             raw_dir            = data / "raw",
             spec_dir           = data / "spectrograms",
-            metadata_csv       = data / meta_name,
-            split_indices_json = data / split_name,
-            class_weights_pt   = data / ("class_weights_dedup.pt" if dedup else "class_weights.pt"),
+            metadata_csv       = meta_path,
+            split_indices_json = split_path,
+            class_weights_pt   = data / class_weights_name,
             output_dir         = out,
-            checkpoint_dir     = out / "checkpoints",
+            checkpoint_dir     = ckpt_dir,
         )
 
     @staticmethod
     def auto_detect(base_override: Optional[str] = None,
                     output_subdir: str = "Review 3/output",
                     dedup: bool = False,
-                    tag: Optional[str] = None) -> "Paths":
+                    tag: Optional[str] = None,
+                    split: str = "legacy",
+                    holdout: Optional[str] = None,
+                    seed: int = 42,
+                    metadata_override: Optional[str | Path] = None,
+                    split_override: Optional[str | Path] = None,
+                    out_root: Optional[str | Path] = None) -> "Paths":
         """Pick Drive base on Colab (if mounted), else local base."""
         if base_override:
             base = Path(base_override).expanduser().resolve()
@@ -105,7 +152,12 @@ class Paths:
             base = DEFAULT_DRIVE_BASE
         else:
             base = DEFAULT_LOCAL_BASE
-        return Paths.from_base(base, output_subdir=output_subdir, dedup=dedup, tag=tag)
+        return Paths.from_base(
+            base, output_subdir=output_subdir, dedup=dedup, tag=tag,
+            split=split, holdout=holdout, seed=seed,
+            metadata_override=metadata_override, split_override=split_override,
+            out_root=out_root,
+        )
 
     def ensure_output_dirs(self) -> None:
         self.output_dir.mkdir(parents=True, exist_ok=True)
