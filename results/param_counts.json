@@ -1,0 +1,47 @@
+{
+  "baseline": {
+    "feature_extractor": 23508032,
+    "se": 0,
+    "mha": 0,
+    "norm": 0,
+    "classifier": 1050114,
+    "total": 24558146,
+    "phase_a_trainable": 1050114
+  },
+  "se": {
+    "feature_extractor": 23508032,
+    "se": 524288,
+    "mha": 0,
+    "norm": 0,
+    "classifier": 1050114,
+    "total": 25082434,
+    "phase_a_trainable": 1574402
+  },
+  "mha": {
+    "feature_extractor": 23508032,
+    "se": 0,
+    "mha": 16785408,
+    "norm": 4096,
+    "classifier": 1050114,
+    "total": 41347650,
+    "phase_a_trainable": 17839618
+  },
+  "se_mha": {
+    "feature_extractor": 23508032,
+    "se": 524288,
+    "mha": 16785408,
+    "norm": 4096,
+    "classifier": 1050114,
+    "total": 41871938,
+    "phase_a_trainable": 18363906
+  },
+  "se_mha_dilated": {
+    "feature_extractor": 23508032,
+    "se": 524288,
+    "mha": 16785408,
+    "norm": 4096,
+    "classifier": 1050114,
+    "total": 41871938,
+    "phase_a_trainable": 18363906
+  }
+}

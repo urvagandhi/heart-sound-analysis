@@ -142,6 +142,7 @@ class AudioConfig:
 
 @dataclass
 class ModelConfig:
+    variant: str        = "se_mha"     # "baseline", "se", "mha", "se_mha", "se_mha_dilated"
     num_classes: int    = 2
     num_heads: int      = 8
     mha_dropout: float  = 0.1
@@ -151,6 +152,23 @@ class ModelConfig:
     feature_dim: int    = 2048         # ResNet50 final channel count
     use_se: bool        = True
     use_mha: bool       = True
+
+    def __post_init__(self) -> None:
+        valid_variants = {"baseline", "se", "mha", "se_mha", "se_mha_dilated"}
+        if self.variant not in valid_variants:
+            raise ValueError(f"Unknown variant '{self.variant}'. Must be one of {valid_variants}")
+        if self.variant == "baseline":
+            self.use_se = False
+            self.use_mha = False
+        elif self.variant == "se":
+            self.use_se = True
+            self.use_mha = False
+        elif self.variant == "mha":
+            self.use_se = False
+            self.use_mha = True
+        elif self.variant in {"se_mha", "se_mha_dilated"}:
+            self.use_se = True
+            self.use_mha = True
 
 
 # ─────────────────────────────────────────────────────────────
