@@ -20,7 +20,7 @@ Primary Role in Project:
   * Interpretability: Foundation for applying Grad-CAM on layer4 bottleneck feature maps to visualize temporal-spectral activations.
 
 Project Extensions Beyond Alrabie and Barnawi:
-  * Dataset: Evaluated on unsegmented 8-second PCG recordings from PhysioNet/CinC 2016 (rather than segmented HeartWave audio).
+  * Dataset: Evaluated on unsegmented 8-second PCG recordings from PhysioNet/CinC 2016 (rather than segmented HeartWave audio). Note: Alrabie & Barnawi do not report AUC.
   * Multi-Head Spatial Attention: Extracted and averaged spatial attention weights across heads and queries.
   * Attribution Profiling: Integrated Gradient SHAP to compute frequency attribution bands across 128 mel filterbanks.
 
@@ -44,7 +44,7 @@ Paper A:
 
 Paper B:
   Z. Ren et al., "Deep attention-based neural networks for explainable heart sound classification," 2022.
-  Role: Evaluated CNN with attention pooling on the three-class Heart Sounds Shenzhen (HSS) dataset (UAR 51.2%).
+  Role: Evaluated CNN with attention pooling on the three-class Heart Sounds Shenzhen (HSS) dataset (UAR 51.2%). Does not evaluate on PhysioNet 2016 and does not report PhysioNet accuracy or AUC.
 
 ==============================================================
 RANK 4: SPECTROGRAM AND VALVULAR DISORDER REFERENCE

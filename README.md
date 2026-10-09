@@ -1,7 +1,7 @@
 # Explainable AI for Heart Sound Analysis
-### Bridging the Gap Between Algorithmic Inference and Clinical Reasoning
+### Leakage-Aware Benchmarking, Architectural Ablations and Population-Level Explanation Audits
 
-[![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.14-blue.svg)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 [![Dataset](https://img.shields.io/badge/Dataset-PhysioNet%20CinC%202016-green.svg)](https://physionet.org/content/challenge-2016/1.0.0/)
 [![License](https://img.shields.io/badge/License-Academic%20Research-lightgrey.svg)]()
@@ -15,154 +15,135 @@
 
 ## 📌 Executive Summary
 
-Cardiovascular diseases (CVDs) remain the leading cause of global mortality, responsible for approximately 17.9 million deaths annually. While traditional cardiac auscultation using phonocardiograms (PCG) is the primary non-invasive screening technique, it is inherently subjective and heavily constrained by ambient noise and clinician expertise. 
+Cardiovascular diseases (CVDs) remain the leading cause of global mortality, responsible for approximately 17.9 million deaths annually. While traditional cardiac auscultation using phonocardiograms (PCG) is the primary frontline screening technique, it is subjective, examiner-dependent and vulnerable to ambient noise.
 
-Deep learning models have achieved high diagnostic accuracy in automated cardiac sound classification, yet they function as opaque **"black boxes"**. Clinicians cannot safely rely on automated predictions without clear, physiology-grounded explanations verifying whether decisions are based on genuine pathological murmur signatures rather than recording artifacts or background noise.
+Automated PCG classifiers have achieved high reported accuracy on public datasets, yet published numbers are frequently fragile because of unaddressed data leakage and cross-site distribution shifts. Furthermore, deep learning interpretability studies often showcase single cherry-picked saliency maps without quantitative population-level validation.
 
-This repository implements an end-to-end **Explainable Artificial Intelligence (XAI)** framework for automated heart sound classification on the benchmark **PhysioNet / CinC Challenge 2016** dataset. By integrating a transfer-learned **ResNet50** backbone with **Squeeze-and-Excitation (SE)** channel attention, **Multi-Head Self-Attention (MHSA)** for temporal context, and a three-part interpretability suite (**Grad-CAM**, **mean attention maps**, and **SHAP**), our framework provides actionable, visually intuitive clinical reasoning alongside state-of-the-art diagnostic metrics.
+This repository provides an end-to-end framework implementing:
+1. **Leakage-Aware Evaluation:** Quantifying diagnostic inflation from duplicate validation entries and conducting leave-one-database-out (LODO) cross-site testing.
+2. **Component Ablations (3 Seeds):** Systematically isolating the contributions of ResNet50, Squeeze-and-Excitation (SE), and Multi-Head Self-Attention (MHSA).
+3. **Dilated Backbone (14×14 Grid):** Replacing standard layer4 strides with atrous convolutions to refine spatial-temporal resolution to 0.57 s per cell.
+4. **Population-Level Explanation Audit:** Quantitatively auditing frequency occlusion, perturbation faithfulness, cascading model randomization sanity checks, multi-method agreement, and PhysioNet acoustic state annotation enrichment ($E_s$).
+5. **Model Calibration and Clinical Operating Point:** Evaluating Expected Calibration Error (ECE) and optimizing decision thresholds on validation data targeting sensitivity $\ge 0.90$.
 
 ---
 
-## 🔬 Key Contributions & System Architecture
+## 🔬 System Specifications
 
-```mermaid
-graph TD
-    A["Raw PCG Audio (.wav)"] --> B["Butterworth Bandpass Filter<br/>(25 - 900 Hz) + Resample (4,000 Hz)"]
-    B --> C["Fixed Duration Window (8.0s)<br/>(Zero-Padding or Onset Crop)"]
-    C --> D["Log-Mel Spectrogram<br/>(128 Slaney Mel Bands, 20 - 1000 Hz, 224 × 224 RGB)"]
-    
-    subgraph HNN ["Hybrid Neural Network Architecture"]
-        direction TB
-        E["Pretrained ResNet50 Backbone<br/>(layer1 - layer4 Feature Maps, 23.5 M params)"]
-        --> F["Squeeze-and-Excitation (SE Block)<br/>(Channel Attention, r = 16, 0.52 M params)"]
-        F --> G["Multi-Head Self-Attention<br/>(8 Attention Heads, 49 Tokens, 16.8 M params)"]
-        G --> H["LayerNorm + Residual Skip Connection"]
-        H --> I["Global Average Pooling (GAP)"]
-        I --> J["Multi-Layer Perceptron (MLP) Head<br/>(Dropout 0.4 & 0.2, 512 Units, 41.9 M Params Total)"]
-    end
-
-    D --> E
-
-    J --> K["Binary Classification Prediction<br/><b>Normal vs. Abnormal</b><br/>(90.79% Acc, 0.946 AUC-ROC)"]
-    
-    E -.->|"layer4[-1] Activation Hooks"| L1["Grad-CAM Heatmaps<br/>(Bottleneck Activations)"]
-    G -.->|"Averaged Heads & Queries"| L2["Mean Spatial Attention Maps<br/>(49 Token Cells, ~1.14 s/cell)"]
-    D -.->|"GradientExplainer Attribution"| L3["SHAP Feature Importance<br/>(Attribution Across Frequency Bands)"]
-
-    subgraph XAI ["Three-Part Explainable AI (XAI) Suite"]
-        direction TB
-        L1
-        L2
-        L3
-    end
-
-    classDef primary fill:#1f3a5f,stroke:#102238,stroke-width:2px,color:#ffffff;
-    classDef model fill:#eef2f7,stroke:#1f3a5f,stroke-width:2px,color:#1f3a5f;
-    classDef output fill:#2e7d32,stroke:#1b5e20,stroke-width:2px,color:#ffffff;
-    classDef xai fill:#b71c1c,stroke:#7f0000,stroke-width:2px,color:#ffffff;
-
-    class A,B,C,D primary;
-    class E,F,G,H,I,J model;
-    class K output;
-    class L1,L2,L3 xai;
-```
-
-<details>
-<summary><b>📐 Click to View ASCII Architecture Diagram</b></summary>
-
-```text
-[ Raw PCG Audio (.wav) ]
-           │
-           ▼
-[ Butterworth Bandpass (25 - 900 Hz) + Resample (4,000 Hz) ]
-           │
-           ▼
-[ Fixed Duration (8.0s) (Zero-Padded / Onset-Cropped) ]
-           │
-           ▼
-[ Log-Mel Spectrogram (128 Slaney Bands, 20 - 1000 Hz, 224×224 RGB) ]
-           │
-           ▼
-┌────────────────────────────────────────────────────────┐
-│               Hybrid Neural Network                    │
-│                                                        │
-│  [ Pretrained ResNet50 Backbone (layer1 - layer4) ]    │
-│                         │                              │
-│                         ▼                              │
-│         [ Squeeze-and-Excitation (SE Block) ]          │
-│             (Channel Attention, r = 16)                │
-│                         │                              │
-│                         ▼                              │
-│        [ Multi-Head Self-Attention (8 Heads) ]         │
-│          (Spatial & Temporal Token Attention)          │
-│                         │                              │
-│                         ▼                              │
-│           [ LayerNorm + Residual Skip ]                │
-│                         │                              │
-│                         ▼                              │
-│         [ Global Average Pooling (GAP) ]               │
-│                         │                              │
-│                         ▼                              │
-│     [ Multi-Layer Perceptron Head (41.9 M params) ]    │
-└────────────────────────────────────────────────────────┘
-           │
-     ┌─────┴─────────────────────────────────────┐
-     ▼                                           ▼
-[ Prediction ]                             [ XAI Explanations ]
-Normal vs. Abnormal                        ├─ Grad-CAM (Bottleneck Activations)
-(90.79% Acc, 0.946 AUC)                    ├─ Mean Attention Maps
-                                           └─ SHAP Frequency Importance (GradientExplainer)
-```
-
-</details>
-
-### 1. Robust Audio Preprocessing Pipeline (Phase 1)
-- **Artifact Removal:** 4th-order zero-phase Butterworth bandpass filtering (25 Hz to 900 Hz) suppressing baseline drift below 25 Hz and acoustic hiss above 900 Hz.
-- **Sampling Normalization:** Uniform resample to 4,000 Hz.
-- **Duration Standardization:** Standardized to 8.0 seconds (32,000 samples) via zero-padding or onset cropping.
-- **Time-Frequency Representation:** Extracted Log-Mel Spectrograms with 128 mel bands ($n_{\text{fft}} = 512$, hop length $= 128$) using the default librosa (Slaney) mel scale (20 to 1000 Hz, linear below 1 kHz), normalized and bilinearly resized to $224 \times 224 \times 3$.
+### 1. Audio Preprocessing Pipeline
+- **Sampling Rate:** Resampled to 4,000 Hz (providing bandwidth up to 2,000 Hz, well above the 1,000 Hz cardiac ceiling).
+- **Filtering:** 4th-order zero-phase Butterworth bandpass filter (25 Hz to 900 Hz), suppressing baseline drift below 25 Hz and acoustic hiss above 900 Hz.
+- **Duration Normalization:** Standardized to 8.0 s (32,000 samples) via zero-padding or onset cropping (capturing 8 to 13 resting cardiac cycles).
+- **Time-Frequency Representation:** Log-mel spectrograms with 128 mel bands computed via STFT:
+  - FFT window size ($n_{\text{fft}}$): 512 samples (128 ms, Hann window)
+  - Hop length: 128 samples (32 ms)
+  - Scale: Default librosa (Slaney) mel scale from 20 Hz to 1,000 Hz (linear below 1 kHz, 7.7 Hz per bin)
+  - Output shape: $128 \times 251$, scaled to $[0, 1]$ in dB, bilinearly resized to $224 \times 224$, replicated across 3 channels, and normalized with ImageNet statistics.
 - **Data Augmentation:** SpecAugment (frequency masking width 1 to 17 bands, time masking width 1 to 24 frames).
 
-### 2. Hybrid Attention Architecture (Phase 2)
-- **Deep Feature Representation:** ImageNet-pretrained ResNet50 extracting 2048-dimensional high-level feature maps (23.5 M parameters).
-- **Squeeze-and-Excitation (SE):** Channel-wise dynamic calibration modeling inter-channel relationships (reduction ratio $r = 16$, 0.52 M parameters).
-- **Multi-Head Self-Attention (MHSA):** 8 attention heads processing flattened spatial feature tokens ($7 \times 7 = 49$ tokens, key dimension $d_k=256$, 16.8 M parameters).
-- **Classifier Head:** Global average pooling, dropout (0.4), 512-unit linear layer with ReLU, dropout (0.2), and 2-unit projection (1.05 M parameters, 41.9 M parameters total).
-- **Two-Stage Training Protocol:**
-  - *Stage 1 (Warm-up, epochs 1 to 10):* Frozen backbone weights; optimizing SE block, attention layer, and MLP classifier (18.4 M parameters) with AdamW ($\text{lr} = 3\times 10^{-4}$ decaying to $10^{-6}$ via cosine annealing). Backbone BatchNorm layers stay in training mode to adapt running statistics.
-  - *Stage 2 (Fine-Tuning, epochs 11 to 40):* All 41.9 M parameters trained with AdamW ($\text{lr} = 3\times 10^{-5}$ decaying to $10^{-7}$) with class-weighted, label-smoothed cross-entropy loss ($\alpha = 0.05$).
-
-### 3. Three-Part Explainability Suite
-- **Grad-CAM (Gradient-Weighted Class Activation Mapping):** Visualizes spatial heatmaps from the final bottleneck block (`layer4[-1]`), upsampled bilinearly from $7 \times 7$ grid (~1.14 s per cell).
-- **Spatial Attention Maps:** Mean spatial attention maps averaged across heads and queries directly from the single self-attention layer (no recursive attention rollout needed).
-- **SHAP (SHapley Additive exPlanations):** GradientExplainer feature attributions approximating Shapley values across mel-frequency bands.
+### 2. Training Protocol & Hyperparameters
+- **Optimization:** AdamW optimizer with weight decay $10^{-4}$ and gradient clipping (max norm 1.0).
+- **Loss Function:** Class-weighted cross-entropy with label smoothing ($\alpha = 0.05$).
+- **Batch Size:** 32.
+- **Two-Stage Schedule:**
+  - *Phase A (Warm-up, 10 epochs):* Backbone weights frozen; training SE, MHA, and classification head at base learning rate $3\times 10^{-4}$ decaying to $10^{-6}$ via cosine annealing. Backbone BatchNorm running statistics are frozen (`freeze_bn=True`) to preserve ImageNet statistics.
+  - *Phase B (Fine-tuning, 30 epochs):* Joint end-to-end training of all parameters at learning rate $3\times 10^{-5}$ decaying to $10^{-7}$. Early stopping counter is reset to 0 at the start of Phase B (patience 8 on validation loss).
+- **Regularization:** Head dropout of 0.4 and 0.2; attention weight dropout of 0.1.
 
 ---
 
-## 📊 Experimental Results
+## 🏗️ Model Variants & Parameter Counts
 
-Evaluated on the held-out test split of **532 samples** (stratified 70/15/15 train/val/test split across 3,541 PhysioNet 2016 recordings):
+| Model Variant | Key Components | Total Parameters | Phase A Trainable | Spatial Grid | Temporal Resolution |
+| :--- | :--- | :---: | :---: | :---: | :---: |
+| `baseline` | ResNet50 Backbone | 23,508,034 | 2,050 | $7\times 7$ (49 tokens) | 1.14 s / cell |
+| `se` | ResNet50 + SE Block ($r=16$) | 26,038,466 | 2,532,482 | $7\times 7$ (49 tokens) | 1.14 s / cell |
+| `mha` | ResNet50 + MHSA (8 heads, $d_k=256$) | 39,341,506 | 15,835,522 | $7\times 7$ (49 tokens) | 1.14 s / cell |
+| `se_mha` | ResNet50 + SE + MHSA (Reference [2]) | 41,871,938 | 18,365,954 | $7\times 7$ (49 tokens) | 1.14 s / cell |
+| `se_mha_dilated` | Dilated ResNet50 Layer4 + SE + MHSA | 41,871,938 | 18,365,954 | $14\times 14$ (196 tokens) | **0.57 s / cell** |
 
-| Metric | Score | Clinical Relevance |
-| :--- | :---: | :--- |
-| **Test Accuracy** | **90.79%** | Correctly classified 483 out of 532 cardiac recordings |
-| **AUC-ROC** | **0.9457 (0.946)** | Exceptional discrimination threshold across false positive rates |
-| **Balanced Accuracy** | **88.61%** | Robust performance despite inherent dataset class imbalance |
-| **Macro F1-Score** | **87.43%** | Balanced harmonic mean of precision and recall |
-| **Macro Precision** | **86.42%** | High positive predictive value across classes |
-| **Macro Recall** | **88.61%** | High sensitivity minimizing missed cardiac abnormalities |
-| **AUC-PR** | **0.8633** | Strong precision-recall trade-off under skewed distributions |
+---
 
-### Comparative Benchmark
+## 🧪 Evaluation Protocols
 
-| Study | Dataset | Classes | Model | Accuracy (%) | AUC | Explanation |
-| :--- | :--- | :---: | :--- | :---: | :---: | :--- |
-| Li et al. (2020) | PhysioNet 2016 | 2 | Multi-scale CNN, GAP | 86.80 | N/R | None |
-| Ren et al. (2022) | HSS | 3 | CNN, attention pooling | UAR 51.2 | N/R | Frame attention |
-| Padhy et al. (2025) | PhysioNet 2016 subset (2,400, balanced) | 5 | CNN and BiLSTM | 99.15 | 0.99 | Saliency |
-| Althaph and Challa (2025) | HeartWave; PhysioNet 2016 | 9; 2 | Heart sound transformer | 96.7; 90.3 | N/R | Attention |
-| Alrabie and Barnawi (2025) | HeartWave (segmented) | 4 | ResNet50, SE, MHA | 97.3 | N/R | Grad-CAM (mIoU 82%) |
-| **This work** | **PhysioNet 2016 (full)** | **2** | **ResNet50, SE, 8-head MHSA** | **90.79** | **0.9457** | **Grad-CAM, attention, SHAP** |
+1. **Protocol 1 — Legacy Split (Data Leakage Measurement):**
+   - Evaluated on the 3,541 entries containing 301 duplicated validation entries.
+   - Measures performance on 70 duplicate twin test rows versus 462 unique test rows.
+2. **Protocol 2 — Deduplicated Benchmark (Component Ablation):**
+   - Evaluated on 3,240 unique recordings across 3 random seeds (42, 43, and 44) under stratified 70/15/15 splits.
+   - Measures multi-seed mean and sample standard deviation across all 5 model variants (15 runs).
+3. **Protocol 3 — Leave-One-Database-Out (LODO Cross-Site Generalization):**
+   - Cross-site evaluation holding out independent recording sites (`training-a`, `training-b`, `training-e`, `training-f`) for testing (8 runs).
+
+---
+
+## 🔍 Population-Level Explanation Audit Suite
+
+1. **Frequency Band Occlusion:**
+   - Evaluates reliance on physiological bands: B1 (20–150 Hz, S1/S2), B2 (150–500 Hz, murmurs), and B3 (500–1,000 Hz, high frequencies).
+   - Compares performance drops against 20 contiguous random row-window controls ($\mu_{\text{rnd}} - 2\sigma_{\text{rnd}}$).
+2. **Faithfulness Deletion and Insertion:**
+   - Computes deletion and insertion curves across 0% to 50% feature perturbation.
+   - Contrasts deletion AUC against random attribution baselines using paired Wilcoxon signed-rank tests.
+3. **Adebayo Cascading Randomization Sanity Check:**
+   - Progressively randomizes network weights top-down from classifier to early conv layers.
+   - Verifies whether Spearman rank correlation with the intact Grad-CAM map collapses (< 0.30).
+4. **Multi-Method Pairwise Agreement:**
+   - Quantifies pairwise agreement between Grad-CAM, self-attention maps, and Gradient SHAP on pooled $7\times 7$ grids using Spearman rank correlation and top-20% IoU.
+5. **PhysioNet State Annotation Enrichment ($E_s$):**
+   - Evaluates temporal alignment against PhysioNet `*_StateAns.mat` labels (S1, systole, S2, diastole).
+   - Computes enrichment ratio: $E_s = \frac{\sum_{t \in s} \text{CAM}(t) / \sum_t \text{CAM}(t)}{T_s / T}$, where $E_s > 1$ denotes focus exceeding chance.
+
+---
+
+## 🚀 Reproduction Guide (Google Colab & CLI)
+
+The entire experimental benchmark consists of 24 planned runs executed sequentially without hyperparameter tuning loops.
+
+### Step 1: Clone Repository & Install Dependencies
+```bash
+git clone https://github.com/urvagandhi/heart-sound-analysis.git
+cd heart-sound-analysis
+
+pip install -r requirements.txt
+```
+
+### Step 2: Generate Splits & Check Leakage
+```bash
+# Generate deduplicated splits (seeds 42, 43, 44) and LODO splits (holdouts a, b, e, f)
+python "Review 3/make_splits.py" --mode dedup --seeds 42 43 44
+python "Review 3/make_splits.py" --mode lodo --holdouts a b e f --seed 42
+
+# Verify duplicates and compute legacy twin leakage
+python "Review 3/verify_duplicates.py"
+```
+
+### Step 3: Run the 24 Benchmark Experiments Sequentially
+```bash
+# Verify the 24 planned runs in dry-run mode
+python "Review 3/run_all.py" --dry-run
+
+# Execute all 24 training/evaluation runs sequentially (resume-safe)
+python "Review 3/run_all.py"
+```
+
+### Step 4: Run the Population-Level Explanation Audit
+```bash
+# Execute explanation audit suite on primary model (dedup_se_mha_seed42)
+python "Review 3/audit/run_audit.py" --tag dedup_se_mha_seed42
+```
+
+### Step 5: Aggregate Deliverables & Generate LaTeX
+```bash
+# Compile all metrics into LaTeX tables, macros, and rule-based findings
+python "Review 3/aggregate_results.py"
+```
+
+### Step 6: Run Fast Unit Test Suite
+```bash
+# Execute fast (<60 s) synthetic test suite
+python -m pytest -v
+```
 
 ---
 
@@ -170,116 +151,53 @@ Evaluated on the held-out test split of **532 samples** (stratified 70/15/15 tra
 
 ```
 .
-├── Explainable AI for Heart Sound Analysis.docx  # Full Research Paper Manuscript
-├── README.md                                     # Project Documentation & Guide
+├── README.md                                     # Project Documentation & Benchmark Guide
 ├── requirements.txt                              # Python Dependencies
-├── .gitattributes                                # Git LFS configuration (*.pth)
 ├── .gitignore                                    # Build & cache exclusion rules
 │
-├── Research Papers/                              # Primary Literature & References
-│   ├── Bridging the Gap Between AI and Clinical Reasoning...pdf
-│   ├── Classification of Heart Sounds Using CNN.pdf
-│   ├── Deep attention-based neural networks for explainable...pdf
-│   ├── Development of explainable machine intelligence models...pdf
-│   ├── Explainable attention-based deep learning for heart murmurs...pdf
-│   ├── What is XAI _.pdf
-│   ├── X-CBNet_ An Explainable Effective Deep Learning Framework...pdf
-│   └── XAI Framework for Cardiovascular Disease Prediction...pdf
+├── physionet_2016/                               # Dataset Manifests & Splits
+│   ├── metadata.csv                              # Original 3,541 recording entries
+│   ├── metadata_dedup.csv                        # Deduplicated 3,240 recording entries
+│   ├── split_indices.json                        # Legacy 70/15/15 split indices
+│   └── splits/                                   # Generated dedup & LODO split manifests
 │
-├── Review 1/                                     # RMS Review 1: Literature & Scope
-│   ├── Literature Review.docx                    # Detailed Literature Synthesis
-│   ├── XAI_HeartSound_FINAL.pptx                 # Review 1 Presentation Slides
-│   └── XAI_HeartSound_FINAL.odp                  # OpenDocument Presentation
-│
-├── physionet_2016/                               # Dataset Split Manifests & Weights
-│   ├── metadata.csv                              # 3,541 PCG recording entries
-│   ├── split_indices.json                        # Stratified train (2478), val (531), test (532)
-│   └── class_weights.pt                          # Inverse class frequency tensors
-│
-├── Review 2/                                     # RMS Review 2: Phase 1 Preprocessing
+├── Review 2/                                     # RMS Review 2: Preprocessing Pipeline
 │   ├── physionet_preprocess.py                   # Data ingestion, filter & spectrogram pipeline
-│   ├── Phase1_Data_Preprocessing_Pipeline.ipynb  # Interactive Phase 1 Notebook
-│   ├── main.tex                                  # Review 2 LaTeX Beamer Presentation
-│   ├── REVIEW_2_PPT.pdf                          # Compiled Review 2 Presentation
-│   └── output/                                   # Preprocessing Visualizations
-│       ├── augmentation_demo.png
-│       ├── class_distribution.png
-│       ├── duration_distribution.png
-│       ├── envelope_detection.png
-│       ├── filter_response.png
-│       ├── preprocessing_pipeline.png
-│       └── sample_spectrograms.png
+│   └── main.tex                                  # Review 2 Beamer Presentation
 │
-└── Review 3/                                     # RMS Review 3: Phase 2 Model & XAI
-    ├── main.py                                   # End-to-end command-line runner
-    ├── model.py                                  # ResNet50 + SE + MultiHeadAttention
-    ├── train.py                                  # Two-stage training engine with AMP
-    ├── evaluate.py                               # Test set evaluation & metric reporting
-    ├── xai.py                                    # Grad-CAM, mean attention maps, and SHAP
-    ├── config.py                                 # Hyperparameter and path configurations
-    ├── data.py                                   # PyTorch Dataset and DataLoader loaders
-    ├── utils.py                                  # Literature comparison & sample picker
-    ├── Phase2_Model_Training_XAI.ipynb           # Interactive Model & XAI Notebook
-    └── output/                                   # Checkpoints & Analytical Outputs
-        ├── checkpoints/
-        │   ├── best_model.pth                    # Trained Model Weights (Git LFS)
-        │   └── history.json                      # Per-epoch loss and metrics log
-        ├── attention_overlays.png
-        ├── comparison_table.png
-        ├── confusion_matrix.png
-        ├── gradcam_overlays.png
-        ├── roc_pr_curves.png
-        ├── shap_frequency_importance.png
-        ├── shap_sample_overlays.png
-        ├── test_metrics.json
-        ├── test_predictions.csv
-        └── training_history.png
-```
-
----
-
-## 🚀 Getting Started
-
-### 1. Prerequisites & Installation
-
-Clone the repository and install required packages:
-```bash
-git clone https://github.com/urvagandhi/heart-sound-analysis.git
-cd heart-sound-analysis
-
-# Initialize Git LFS to pull model weights
-git lfs install
-git lfs pull
-
-# Create virtual environment and install dependencies
-python -m venv venv
-# On Windows:
-.\venv\Scripts\activate
-# On Linux/macOS:
-source venv/bin/activate
-
-pip install -r requirements.txt
-```
-
-### 2. Running Preprocessing (Phase 1)
-
-Download and generate Log-Mel Spectrograms from PhysioNet 2016:
-```bash
-python "Review 2/physionet_preprocess.py"
-```
-
-### 3. Model Training & Evaluation (Phase 2)
-
-Execute full end-to-end training and evaluation:
-```bash
-python "Review 3/main.py"
-```
-
-Optional CLI flags:
-```bash
-python "Review 3/main.py" --epochs 30 --warmup 5 --batch 32
-python "Review 3/main.py" --skip-train               # Evaluate existing checkpoint
-python "Review 3/main.py" --skip-shap                # Skip slow SHAP computation
+├── Review 3/                                     # RMS Review 3: Core Implementation
+│   ├── config.py                                 # Configuration dataclasses (5 variants, paths)
+│   ├── model.py                                  # ResNet50, SE, MHA, and Dilated Backbone
+│   ├── train.py                                  # Two-stage training engine (frozen BN, reset ES)
+│   ├── evaluate.py                               # Evaluation engine & metric computation
+│   ├── xai.py                                    # Grad-CAM, attention maps, and SHAP
+│   ├── make_splits.py                            # Deduplicated & LODO split generator
+│   ├── verify_duplicates.py                      # Leakage verifier & twin performance audit
+│   ├── run_all.py                                # Sequential orchestrator (24 planned runs)
+│   ├── aggregate_results.py                      # Deliverables aggregator -> Paper Writing/generated/
+│   └── audit/                                    # Population-Level Explanation Audit Suite
+│       ├── common.py                             # Mel-Hz mapping, unit conversion, bootstrap CI
+│       ├── occlusion.py                          # Band occlusion with random-window controls
+│       ├── faithfulness.py                       # Deletion/insertion curves & Wilcoxon tests
+│       ├── sanity.py                             # Adebayo cascading randomization check
+│       ├── agreement.py                          # Pairwise Spearman & IoU agreement
+│       ├── enrichment.py                         # PhysioNet state annotation enrichment (E_s)
+│       ├── calibration.py                        # ECE & clinical operating point selection
+│       └── run_audit.py                          # Audit orchestration runner
+│
+├── Paper Writing/                                # Publication Manuscript
+│   ├── paper.tex                                 # IEEEtran Conference Manuscript
+│   └── generated/                                # Auto-generated LaTeX tables, macros & findings
+│
+└── tests/                                        # Synthetic Fast Unit Test Suite (pytest)
+    ├── test_model.py                             # Model variants, legacy keys & parameter counts
+    ├── test_splits.py                            # Disjointness & completeness of splits
+    ├── test_occlusion.py                         # Toy band occlusion audit
+    ├── test_faithfulness.py                      # Toy deletion AUC perturbation ordering
+    ├── test_sanity.py                            # Cascading randomization correlation drop
+    ├── test_enrichment.py                        # Acoustic state enrichment E_s = 1.0 test
+    ├── test_calibration.py                       # ECE & operating point threshold selection
+    └── test_aggregation.py                      # Results aggregator mock end-to-end test
 ```
 
 ---
@@ -288,7 +206,7 @@ python "Review 3/main.py" --skip-shap                # Skip slow SHAP computatio
 
 ```bibtex
 @article{gandhi2026xaiheartsound,
-  title   = {Explainable AI for Heart Sound Analysis: Bridging the Gap Between Algorithmic Inference and Clinical Reasoning},
+  title   = {Leakage-Aware Evaluation, Architectural Ablations and Population-Level Explanation Audits for Phonocardiogram Classification},
   author  = {Urva Gandhi and Rakshit Gajnotar and Dr. Sapan Mankad},
   journal = {Department of Computer Science and Engineering, Nirma University},
   year    = {2026}
