@@ -171,6 +171,12 @@ def train(model: HeartSoundModel,
     """End-to-end two-phase training. Saves best checkpoint to
     ``paths.checkpoint_dir / 'best_model.pth'`` and the training history
     JSON next to it."""
+    import time
+    from config import set_seed
+
+    set_seed(train_cfg.seed)
+    start_time = time.time()
+
     paths.ensure_output_dirs()
     ckpt_path = paths.checkpoint_dir / "best_model.pth"
 
@@ -225,6 +231,8 @@ def train(model: HeartSoundModel,
         print(f"\n[Phase B] Fine-tune: backbone unfrozen, {remaining} epochs, lr={train_cfg.lr_full:g}")
         model.unfreeze_backbone()
         model.feature_extractor.train()
+        stopper.counter = 0  # Reset EarlyStopping counter so warm-up epochs do not carry over
+
         optimizer = _make_optimizer(model, train_cfg.lr_full,
                                     train_cfg.weight_decay, only_trainable=False)
         scheduler = CosineAnnealingLR(optimizer, T_max=remaining, eta_min=1e-7)
@@ -256,12 +264,15 @@ def train(model: HeartSoundModel,
     print(f"\n  Loaded best checkpoint (epoch {stopper.best_epoch}, "
           f"val_loss={stopper.best:.4f}) from {ckpt_path}")
 
+    elapsed_seconds = float(time.time() - start_time)
+
     # Persist history
     hist_path = paths.checkpoint_dir / "history.json"
     with open(hist_path, "w") as f:
         json.dump({"history": history,
                    "best_epoch": stopper.best_epoch,
                    "best_val_loss": stopper.best,
+                   "elapsed_seconds": elapsed_seconds,
                    "train_config": asdict(train_cfg)}, f, indent=2)
 
     return history

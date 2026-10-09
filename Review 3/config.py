@@ -194,7 +194,7 @@ class TrainConfig:
     seed: int              = 42
     use_class_weights: bool = True
     use_amp: bool          = True      # mixed precision when on CUDA
-    freeze_bn: bool        = False
+    freeze_bn: bool        = True
 
 
 CLASS_NAMES = ["Normal", "Abnormal"]   # index 0 = Normal, 1 = Abnormal
