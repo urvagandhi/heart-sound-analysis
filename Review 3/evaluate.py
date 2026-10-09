@@ -71,6 +71,8 @@ def evaluate_on_test(model: torch.nn.Module,
     if n_classes == 2:
         metrics["auc_roc"] = roc_auc_score(labels, probs[:, 1])
         metrics["auc_pr"]  = average_precision_score(labels, probs[:, 1])
+        metrics["sensitivity"] = float(metrics["recall_per_class"][1])
+        metrics["specificity"] = float(metrics["recall_per_class"][0])
     else:
         metrics["auc_roc"] = roc_auc_score(labels, probs, multi_class="ovr",
                                            average="macro")

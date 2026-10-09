@@ -119,5 +119,6 @@ def pick_explainable_indices(metrics: Dict, n_correct: int = 2,
 def metrics_to_dict(metrics: Dict) -> Dict[str, float]:
     """Strip out the heavy numpy arrays — keep only scalars for JSON dump."""
     keep = ("accuracy", "balanced_accuracy", "precision_macro",
-            "recall_macro", "f1_macro", "auc_roc", "auc_pr")
+            "recall_macro", "f1_macro", "auc_roc", "auc_pr",
+            "sensitivity", "specificity")
     return {k: float(metrics[k]) for k in keep if k in metrics}
