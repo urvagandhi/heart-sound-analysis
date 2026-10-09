@@ -128,6 +128,13 @@ class GradCAM:
         self._fwd_handle.remove()
         self._bwd_handle.remove()
 
+    def remove(self) -> None:
+        self.close()
+
+    def generate(self, input_tensor: torch.Tensor,
+                 target_class: Optional[int] = None) -> np.ndarray:
+        return self(input_tensor, target_class=target_class)
+
     def __call__(self, input_tensor: torch.Tensor,
                  target_class: Optional[int] = None) -> np.ndarray:
         was_training = self.model.training

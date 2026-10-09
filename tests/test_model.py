@@ -81,3 +81,16 @@ def test_dilated_grid_resolution() -> None:
     assert out_dil.shape == (2, 2)
     assert m_dilated.last_attention_weights is not None
     assert m_dilated.last_attention_weights.shape == (2, 196, 196)
+
+
+@pytest.mark.parametrize("variant", ["baseline", "se", "mha", "se_mha", "se_mha_dilated"])
+def test_forward_pass_output_shape(variant: str) -> None:
+    """Verify forward pass output shape (1, 2) on dummy tensor (1, 3, 224, 224) for every variant."""
+    cfg = ModelConfig(variant=variant)
+    model = HeartSoundModel(cfg, pretrained=False)
+    model.eval()
+    x = torch.randn(1, 3, 224, 224)
+    with torch.no_grad():
+        out = model(x)
+    assert out.shape == (1, 2), f"Expected shape (1, 2), got {out.shape} for {variant}"
+

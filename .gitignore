@@ -79,6 +79,7 @@ desktop.ini
 *.pth
 *.ckpt
 *.npz
+results/**/*.pth
 
 # Nested cloned repositories and tooling
 humanizer_repo/
