@@ -1,0 +1,21 @@
+\begin{table}[t]
+\centering
+\caption{Leave-One-Database-Out (LODO) Cross-Site Evaluation (Seed 42)}
+\label{tab:lodo}
+\begin{tabular}{lcccc}
+\toprule
+& \multicolumn{2}{c}{\textbf{Baseline (ResNet50)}} & \multicolumn{2}{c}{\textbf{SE + MHSA [2]}} \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-5}
+\textbf{Held-out Subset} & \textbf{Balanced Acc.} & \textbf{AUC-ROC} & \textbf{Balanced Acc.} & \textbf{AUC-ROC} \\
+\midrule
+training-a & \pending\% & \pending\% & \pending\% & \pending\% \\
+training-b & \pending\% & \pending\% & \pending\% & \pending\% \\
+training-e & \pending\% & \pending\% & \pending\% & \pending\% \\
+training-f & \pending\% & \pending\% & \pending\% & \pending\% \\
+\midrule
+\textbf{Mean Held-Out} & \macLODOBaselineMeanBA\% & \macLODOBaselineMeanAUC\% & \macLODOSEMHAMeanBA\% & \macLODOSEMHAMeanAUC\% \\
+In-distribution (dedup mean) & \pending & \pending & \pending & \pending \\
+Drop vs. in-distribution & \macLODODropBaseline\% pts & \pending & \macLODODropSEMHA\% pts & \pending \\
+\bottomrule
+\end{tabular}
+\end{table}

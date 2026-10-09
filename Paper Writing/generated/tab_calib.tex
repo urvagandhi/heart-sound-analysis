@@ -1,0 +1,16 @@
+\begin{table}[t]
+\centering
+\caption{Model Calibration and Clinical Operating Point Evaluation}
+\label{tab:calib}
+\begin{tabular}{lc}
+\toprule
+\textbf{Metric / Operational Parameter} & \textbf{Value} \\
+\midrule
+Expected Calibration Error (ECE, 15 bins) & \macCalibECE\% \\
+Validation-Selected Operating Threshold ($\ge$90\% Sens.) & \macCalibOpThreshold{} \\
+Test Sensitivity at Operating Threshold   & \macCalibOpSens\% \\
+Test Specificity at Operating Threshold   & \macCalibOpSpec\% \\
+Test Balanced Accuracy at Operating Point & \macCalibOpBA\% \\
+\bottomrule
+\end{tabular}
+\end{table}
