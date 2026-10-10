@@ -79,8 +79,12 @@ desktop.ini
 *.pth
 *.ckpt
 *.npz
+*.zip
+physionet_2016/raw/
+physionet_2016/spectrograms/
 results/**/*.pth
 
 # Nested cloned repositories and tooling
 humanizer_repo/
 audit_scratch/
+
