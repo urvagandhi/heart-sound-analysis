@@ -47,6 +47,8 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
 cover/
 
 # Jupyter Notebook checkpoints
@@ -79,12 +81,31 @@ desktop.ini
 *.pth
 *.ckpt
 *.npz
+*.npy
+results/**/*.pth
+
+# Raw Audio Datasets, Spectrograms & Archives
+*.wav
+*.mp3
+*.ogg
+*.flac
 *.zip
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+raw/
+spectrograms/
 physionet_2016/raw/
 physionet_2016/spectrograms/
-results/**/*.pth
+physionet_2016.zip
 
 # Nested cloned repositories and tooling
 humanizer_repo/
 audit_scratch/
 
+
+# Benchmark experiment outputs
+results/*
+!results/leakage_check.json
+!results/param_counts.json

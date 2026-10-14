@@ -15,6 +15,8 @@ Override any value at runtime via the helper builders:
 from __future__ import annotations
 
 import os
+import matplotlib
+matplotlib.use("Agg")
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
@@ -149,7 +151,12 @@ class Paths:
         if base_override:
             base = Path(base_override).expanduser().resolve()
         elif is_colab() and is_drive_mounted():
-            base = DEFAULT_DRIVE_BASE
+            if Path("/content/drive/MyDrive/CSE/College/RMS").exists():
+                base = Path("/content/drive/MyDrive/CSE/College/RMS")
+            elif Path("/content/drive/MyDrive/RMS").exists():
+                base = Path("/content/drive/MyDrive/RMS")
+            else:
+                base = DEFAULT_DRIVE_BASE
         else:
             base = DEFAULT_LOCAL_BASE
         return Paths.from_base(
@@ -277,6 +284,10 @@ def set_seed(seed: int = 42) -> None:
 def get_device() -> str:
     try:
         import torch
-        return "cuda" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+            return "cuda"
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return "mps"
+        return "cpu"
     except ImportError:
         return "cpu"

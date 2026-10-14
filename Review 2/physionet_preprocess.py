@@ -22,6 +22,8 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
@@ -58,7 +60,8 @@ def download_dataset(subsets=None, data_dir=RAW_DIR):
 
     for subset in subsets:
         dest = data_dir / f"{subset}.zip"
-        if dest.exists():
+        subset_dir = data_dir / subset
+        if dest.exists() or (subset_dir.exists() and any(subset_dir.glob("*.wav"))):
             print(f"  Already downloaded: {subset}")
             continue
 
@@ -351,9 +354,10 @@ def visualise_samples(df, spec_dir=SPEC_DIR, n=4):
 
     plt.suptitle("Log-Mel Spectrograms — Sample Check", fontsize=11, y=1.02)
     plt.tight_layout()
-    plt.savefig("sample_spectrograms.png", dpi=120, bbox_inches="tight")
-    plt.show()
-    print("Saved: sample_spectrograms.png")
+    out_img = Path("Review 2/output/sample_spectrograms.png") if Path("Review 2/output").exists() else Path("sample_spectrograms.png")
+    plt.savefig(out_img, dpi=120, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {out_img}")
 
 
 # ─────────────────────────────────────────────

@@ -1,0 +1,41 @@
+{
+  "tag": "legacy_se_mha_seed42",
+  "variant": "se_mha",
+  "split": "legacy",
+  "holdout": null,
+  "seed": 42,
+  "args": {
+    "base": null,
+    "variant": "se_mha",
+    "split": "legacy",
+    "holdout": null,
+    "seed": 42,
+    "tag": null,
+    "out_root": null,
+    "freeze_bn": true,
+    "eval_only": false,
+    "checkpoint": null,
+    "with_xai": true,
+    "epochs": 35,
+    "warmup": 10,
+    "batch": 32,
+    "no_amp": false,
+    "shap_n": 128,
+    "num_workers": null,
+    "skip_train": false,
+    "skip_xai": false,
+    "skip_shap": false,
+    "dedup": false
+  },
+  "git_commit": "c8cf4bba0eac3aa96d6c97333ef5afd6fb3332d0",
+  "torch_version": "2.14.1",
+  "param_counts": {
+    "feature_extractor": 23508032,
+    "se": 524288,
+    "mha": 16785408,
+    "norm": 4096,
+    "classifier": 1050114,
+    "total": 41871938,
+    "phase_a_trainable": 18363906
+  }
+}
