@@ -62,19 +62,29 @@ class RunSpec:
         return cmd
 
 
-def build_manifest(legacy_ckpt_path: Path) -> List[RunSpec]:
+def build_manifest(legacy_ckpt_path: Optional[Path] = None) -> List[RunSpec]:
     """Build the complete 24-run benchmark manifest."""
     manifest: List[RunSpec] = []
 
     # 1. Legacy evaluation run (1 run)
-    manifest.append(RunSpec(
-        tag="legacy_se_mha",
-        variant="se_mha",
-        split="legacy",
-        seed=42,
-        eval_only=True,
-        checkpoint=str(legacy_ckpt_path),
-    ))
+    if legacy_ckpt_path and legacy_ckpt_path.exists():
+        manifest.append(RunSpec(
+            tag="legacy_se_mha",
+            variant="se_mha",
+            split="legacy",
+            seed=42,
+            eval_only=True,
+            checkpoint=str(legacy_ckpt_path),
+        ))
+    else:
+        # If no checkpoint exists, train legacy model directly instead of failing
+        manifest.append(RunSpec(
+            tag="legacy_se_mha",
+            variant="se_mha",
+            split="legacy",
+            seed=42,
+            eval_only=False,
+        ))
 
     # 2. Deduplicated component ablation (15 runs)
     dedup_variants = ["baseline", "se", "mha", "se_mha", "se_mha_dilated"]
@@ -198,7 +208,19 @@ def main() -> None:
 
     repo_root = Path(args.base) if args.base else Path(__file__).resolve().parent.parent
     out_root = Path(args.out_root) if args.out_root else repo_root / "results"
-    legacy_ckpt = Path(args.legacy_ckpt) if args.legacy_ckpt else repo_root / "Review 3" / "output" / "checkpoints" / "best_model.pth"
+    if args.legacy_ckpt:
+        legacy_ckpt = Path(args.legacy_ckpt)
+    else:
+        ckpt_candidates = [
+            repo_root / "Review 3" / "output" / "checkpoints" / "best_model.pth",
+            out_root / "legacy_se_mha" / "best_model.pth",
+            out_root / "legacy_se_mha_seed42" / "best_model.pth",
+            Path("/content/drive/MyDrive/heart-sound-analysis/Review 3/output/checkpoints/best_model.pth"),
+            Path("/content/drive/MyDrive/heart-sound-analysis/results/legacy_se_mha/best_model.pth"),
+        ]
+        ckpt_candidates.extend(Path.home().glob("Library/CloudStorage/GoogleDrive-*/My Drive/heart-sound-analysis/Review 3/output/checkpoints/best_model.pth"))
+        ckpt_candidates.extend(Path.home().glob("Library/CloudStorage/GoogleDrive-*/My Drive/heart-sound-analysis/results/legacy_se_mha/best_model.pth"))
+        legacy_ckpt = next((c for c in ckpt_candidates if c.exists()), None)
 
     manifest = build_manifest(legacy_ckpt)
     run_all(

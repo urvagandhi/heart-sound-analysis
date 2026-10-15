@@ -220,7 +220,21 @@ def main() -> None:
     if args.eval_only:
         ckpt_to_load = Path(args.checkpoint) if args.checkpoint else (paths.base_dir / "Review 3" / "output" / "checkpoints" / "best_model.pth")
         if not ckpt_to_load.exists():
-            raise FileNotFoundError(f"--eval-only specified but checkpoint not found at: {ckpt_to_load}")
+            fallbacks = [
+                paths.checkpoint_dir / "best_model.pth",
+                paths.output_dir / "best_model.pth",
+                paths.output_dir.parent / "legacy_se_mha" / "best_model.pth",
+                paths.output_dir.parent / "legacy_se_mha_seed42" / "best_model.pth",
+                Path("/content/drive/MyDrive/heart-sound-analysis/Review 3/output/checkpoints/best_model.pth"),
+                Path("/content/drive/MyDrive/heart-sound-analysis/results/legacy_se_mha/best_model.pth"),
+            ]
+            fallbacks.extend(Path.home().glob("Library/CloudStorage/GoogleDrive-*/My Drive/heart-sound-analysis/Review 3/output/checkpoints/best_model.pth"))
+            fallbacks.extend(Path.home().glob("Library/CloudStorage/GoogleDrive-*/My Drive/heart-sound-analysis/results/legacy_se_mha/best_model.pth"))
+            found = next((f for f in fallbacks if f.exists()), None)
+            if found:
+                ckpt_to_load = found
+            else:
+                raise FileNotFoundError(f"--eval-only specified but checkpoint not found at: {ckpt_to_load}")
         print(f"\n[3/4] Evaluation only. Loading checkpoint from {ckpt_to_load} ...")
         raw_ckpt = torch.load(ckpt_to_load, map_location=device, weights_only=True)
         state_dict = raw_ckpt["model_state_dict"] if (isinstance(raw_ckpt, dict) and "model_state_dict" in raw_ckpt) else raw_ckpt
