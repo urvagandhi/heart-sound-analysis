@@ -44,9 +44,9 @@ def is_drive_mounted() -> bool:
 # PATHS
 # ─────────────────────────────────────────────────────────────
 
-# Drive layout used by the Phase 1 notebook:
-#   /content/drive/MyDrive/CSE/College/RMS/physionet_2016/{raw,spectrograms,...}
-DEFAULT_DRIVE_BASE = Path("/content/drive/MyDrive/CSE/College/RMS")
+# Drive layout used by notebooks and Colab runs:
+#   /content/drive/MyDrive/heart-sound-analysis/physionet_2016/{raw,spectrograms,...}
+DEFAULT_DRIVE_BASE = Path("/content/drive/MyDrive/heart-sound-analysis")
 
 # Local layout assumes Review 3/ sits next to physionet_2016/ at the repo root.
 DEFAULT_LOCAL_BASE = Path(__file__).resolve().parent.parent
@@ -147,18 +147,24 @@ class Paths:
                     metadata_override: Optional[str | Path] = None,
                     split_override: Optional[str | Path] = None,
                     out_root: Optional[str | Path] = None) -> "Paths":
-        """Pick Drive base on Colab (if mounted), else local base."""
+        """Pick Drive base on Colab (if mounted), else local base (or macOS CloudStorage)."""
         if base_override:
             base = Path(base_override).expanduser().resolve()
         elif is_colab() and is_drive_mounted():
-            if Path("/content/drive/MyDrive/CSE/College/RMS").exists():
+            if Path("/content/drive/MyDrive/heart-sound-analysis").exists():
+                base = Path("/content/drive/MyDrive/heart-sound-analysis")
+            elif Path("/content/drive/MyDrive/CSE/College/RMS").exists():
                 base = Path("/content/drive/MyDrive/CSE/College/RMS")
             elif Path("/content/drive/MyDrive/RMS").exists():
                 base = Path("/content/drive/MyDrive/RMS")
             else:
                 base = DEFAULT_DRIVE_BASE
         else:
-            base = DEFAULT_LOCAL_BASE
+            if (DEFAULT_LOCAL_BASE / "physionet_2016").exists():
+                base = DEFAULT_LOCAL_BASE
+            else:
+                mac_drives = list(Path.home().glob("Library/CloudStorage/GoogleDrive-*/My Drive/heart-sound-analysis"))
+                base = mac_drives[0] if mac_drives and (mac_drives[0] / "physionet_2016").exists() else DEFAULT_LOCAL_BASE
         return Paths.from_base(
             base, output_subdir=output_subdir, dedup=dedup, tag=tag,
             split=split, holdout=holdout, seed=seed,
