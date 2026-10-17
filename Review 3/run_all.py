@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -42,6 +43,7 @@ class RunSpec:
                   extra_args: Optional[List[str]] = None) -> List[str]:
         cmd = [
             sys.executable,
+            "-u",
             str(main_py),
             "--variant", self.variant,
             "--split", self.split,
@@ -177,17 +179,29 @@ def run_all(manifest: List[RunSpec],
         print(f"\n{msg_start}")
         logger.info(msg_start)
 
-        # Run process and stream output to log
+        # Run process and stream output live to both console and log
         try:
             with open(log_file, "a", encoding="utf-8") as f_log:
-                proc = subprocess.run(
+                env = os.environ.copy()
+                env["PYTHONUNBUFFERED"] = "1"
+                proc = subprocess.Popen(
                     cmd,
-                    stdout=f_log,
+                    stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
-                    check=True,
                     text=True,
+                    bufsize=1,
+                    env=env,
                 )
-            msg_finish = f"[{idx}/{len(filtered_manifest)}] Successfully completed: {spec.tag}"
+                if proc.stdout:
+                    for line in iter(proc.stdout.readline, ""):
+                        sys.stdout.write(line)
+                        sys.stdout.flush()
+                        f_log.write(line)
+                        f_log.flush()
+                proc.wait()
+                if proc.returncode != 0:
+                    raise subprocess.CalledProcessError(proc.returncode, cmd)
+            msg_finish = f"\n[{idx}/{len(filtered_manifest)}] Successfully completed: {spec.tag}\n"
             print(msg_finish)
             logger.info(msg_finish)
         except subprocess.CalledProcessError as e:
