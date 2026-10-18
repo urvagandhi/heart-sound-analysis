@@ -118,12 +118,19 @@ Models train through a two-phase optimization schedule. Phase~A (warm-up, 10 epo
 \end{equation}
 
 \subsection{Model Variants}
-To isolate the utility of each architectural module, five variants are implemented:
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.98\textwidth]{architecture_comparison.png}
+\caption{Architectural comparison across the evaluation pipeline. Raw 8-second PCG audio is converted to log-mel spectrograms ($224\times224\times3$) and processed through a shared ResNet-50 backbone ($2048\times7\times7$). \textbf{Branch~A (Optimal Parsimonious Pipeline):} Squeeze-and-Excitation (SE) channel recalibration combined with global average pooling and an MLP classifier yields the highest balanced accuracy ($89.0\%$) and AUC-ROC ($95.4\%$) with 25.1M parameters. \textbf{Branch~B (Reference Attention Pipeline):} Adding multi-head self-attention (8 heads, 49 spatial tokens) expands parameters to 41.9M (+69\%) without statistical gain ($88.3\%$ balanced accuracy), while providing the architecture evaluated in multi-method explainability audits (Grad-CAM, self-attention maps and SHAP).}
+\label{fig:arch_comparison}
+\end{figure*}
+
+To isolate the utility of each architectural module, five variants are implemented. Fig.~\ref{fig:arch_comparison} compares the structural pathways between the optimal parsimonious pipeline (Branch~A) and the reference attention pipeline (Branch~B):
 \begin{enumerate}
 \item \textbf{Baseline (ResNet50):} Standard ResNet50 backbone without SE or attention (\macParamBaselineTotal{} total parameters; \macParamBaselinePhaseA{} trainable in Phase~A).
-\item \textbf{SE:} ResNet50 with squeeze-and-excitation channel recalibration (\macParamSETotal{} parameters; \macParamSEPhaseA{} in Phase~A).
+\item \textbf{SE (Optimal Branch~A):} ResNet50 with squeeze-and-excitation channel recalibration (\macParamSETotal{} parameters; \macParamSEPhaseA{} in Phase~A).
 \item \textbf{MHA:} ResNet50 with multi-head self-attention without SE (\macParamMHATotal{} parameters; \macParamMHAPhaseA{} in Phase~A).
-\item \textbf{SE + MHA:} The reference architecture combining SE recalibration and 8-head self-attention (\macParamSEMHATotal{} parameters; \macParamSEMHAPhaseA{} in Phase~A).
+\item \textbf{SE + MHA (Reference Branch~B):} The reference architecture combining SE recalibration and 8-head self-attention (\macParamSEMHATotal{} parameters; \macParamSEMHAPhaseA{} in Phase~A).
 \item \textbf{SE + MHA Dilated:} The dilated backbone model matching SE+MHA parameter count (\macParamDilatedTotal{} parameters) while operating on a denser grid.
 \end{enumerate}
 
@@ -162,7 +169,7 @@ Table~\ref{tab:ablation} presents results across the five architectural variants
 
 \input{generated/tab_ablation}
 
-\findAblation\ Reporting multi-seed statistics reveals that the performance variations between variants fall within seed and sampling variance on $N=486$ test recordings. Baseline ResNet50 achieves $87.3 \pm 2.7\%$ accuracy ($88.4 \pm 2.4\%$ balanced accuracy). Adding SE channel recalibration yields $88.5 \pm 0.4\%$ accuracy ($89.0 \pm 1.8\%$ balanced accuracy). Multi-head self-attention yields $86.6 \pm 1.6\%$ accuracy ($87.7 \pm 2.2\%$ balanced accuracy), while combining SE and MHSA yields $86.6 \pm 2.5\%$ accuracy ($88.3 \pm 2.5\%$ balanced accuracy). Paired comparisons show that SE+MHSA improves over baseline in only 1 of 3 seeds (seed 44) while scoring lower in seeds 42 and 43. Adding self-attention expands parameters from 24.6M to 41.9M (+69\%) without producing statistically detectable performance gains over standard convolutional backbones on unsegmented 8-second spectrograms. The dilated backbone achieves $85.3 \pm 2.8\%$ accuracy ($87.0 \pm 2.4\%$ balanced accuracy), where the expanded token grid (196 tokens) exhibits mild over-parameterization under limited training volume.
+\findAblation\ As illustrated in Fig.~\ref{fig:arch_comparison} and documented in Table~\ref{tab:ablation}, reporting multi-seed statistics reveals that performance variations between variants fall within seed and sampling variance on $N=486$ test recordings. Baseline ResNet50 achieves $87.3 \pm 2.7\%$ accuracy ($88.4 \pm 2.4\%$ balanced accuracy). The optimal configuration is the parsimonious ResNet50 + SE variant (Branch~A), which achieves $88.5 \pm 0.4\%$ accuracy ($89.0 \pm 1.8\%$ balanced accuracy) and an AUC-ROC of $95.4 \pm 0.3\%$. Squeeze-and-excitation recalibrates channel interdependencies across harmonically spaced acoustic bands with minimal parameter overhead (+0.5M parameters over baseline). Multi-head self-attention alone yields $86.6 \pm 1.6\%$ accuracy ($87.7 \pm 2.2\%$ balanced accuracy), while combining SE and MHSA (Branch~B) yields $86.6 \pm 2.5\%$ accuracy ($88.3 \pm 2.5\%$ balanced accuracy). Paired comparisons show that SE+MHSA improves over baseline in only 1 of 3 seeds (seed 44) while scoring lower in seeds 42 and 43. Adding self-attention expands parameters from 25.1M to 41.9M (+67\% parameter expansion over the SE model) without producing measurable performance gains on unsegmented 8-second spectrograms. The $7\times7$ spatial grid yields 49 tokens, providing insufficient sequence length for multi-head attention to extract long-range context without mild overfitting. The dilated backbone achieves $85.3 \pm 2.8\%$ accuracy ($87.0 \pm 2.4\%$ balanced accuracy), where the expanded 196-token grid similarly exhibits over-parameterization under limited training volume.
 
 \subsection{Cross-Site Generalization (LODO)}
 Table~\ref{tab:lodo} presents leave-one-database-out evaluation across the four primary independent recording sources: MIT/Children's Hospital Boston (training-a), Aalborg University (training-b), Dalian University of Technology (training-e) and Soonchunhyang/Shiraz University (training-f) \cite{liu}.
@@ -172,15 +179,31 @@ Table~\ref{tab:lodo} presents leave-one-database-out evaluation across the four 
 \findLODO\ Cross-site testing produces severe performance degradation across all architectures. For SE+MHSA, balanced accuracy drops by \macLODODropSEMHA\% points (from 88.3\% in-distribution to 52.7\% cross-site mean), while AUC drops from 95.0\% to 47.2\%. On training-e, the model achieves 45.6\% balanced accuracy and 19.9\% AUC. Because AUC is a rank-order metric, an AUC of 19.9\% indicates that the predicted abnormal probability ranking is substantially inverted relative to ground truth labels. This collapse is driven by joint acoustic domain shift and severe prior class shift: training-e contains 91\% normal recordings (294 normal vs. 27 abnormal in the test split), creating an acute imbalance relative to other acquisition sources.
 
 \subsection{Explanation Audit Suite}
-Quantitative interpretability metrics across the five audit components evaluate whether explanations reflect physiological signal properties.
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.49\textwidth]{gradcam_overlays.png}\hfill
+\includegraphics[width=0.49\textwidth]{attention_overlays.png}
+\caption{Visual attribution maps across four balanced test cases (true normal, true abnormal, false positive and false negative). (Left) Grad-CAM spatial heatmaps overlaid on log-mel spectrograms. Salient regions concentrate along fundamental heart sound frequency bands below 150~Hz. (Right) Multi-head self-attention maps averaged across attention heads on the same recordings, exhibiting diffuse spatial dispersion across time-frequency tokens.}
+\label{fig:xai_overlays}
+\end{figure*}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.47\textwidth]{occlusion_bars.png}\hfill
+\includegraphics[width=0.51\textwidth]{faithfulness_curves.png}
+\caption{Population-level explanation audit suite. (Left) Frequency band occlusion balanced accuracy impact ($\Delta\text{BA}$) for clinical bands B1 (20--150~Hz), B2 (150--500~Hz) and B3 (500--1000~Hz) compared against 20 row-matched random window controls ($\pm 1\sigma$). Only B1 causes degradation exceeding the control threshold ($-7.81\%$ vs. $-5.18\%$), confirming biological frequency reliance. (Right) Faithfulness deletion and insertion curves tracking model output probability as salient pixels are sequentially masked or revealed for Grad-CAM, Attention, SHAP and random attribution baselines.}
+\label{fig:audit_plots}
+\end{figure*}
+
+Quantitative interpretability metrics across the five audit components evaluate whether explanations reflect physiological signal properties. Fig.~\ref{fig:xai_overlays} illustrates qualitative attribution maps produced by Grad-CAM and multi-head attention across four representative test recordings.
 
 \input{generated/tab_occlusion}
 
-\findOcclusion\ Frequency occlusion assesses whether the network relies on cardiac frequency bands beyond row-matched random contiguous controls. Masking band B1 (20--150~Hz) produces a balanced accuracy drop of $-7.81\%$, which exceeds the row-matched random control threshold ($-2.01\% \pm 1.59\%$, reliance threshold $-5.18\%$). This demonstrates that the network relies heavily on the 20--150~Hz band. However, this low-frequency reliance reflects both cardiac acoustic energy (S1 and S2) and acquisition hardware characteristics (stethoscope resonance and low-frequency ambient rumble). Occluding bands B2 (150--500~Hz) and B3 (500--1000~Hz) produces drops within control variance ($-2.41\%$ and $-4.69\%$, respectively). Retaining only B1 preserves 83.66\% balanced accuracy and 93.94\% sensitivity, indicating that low-frequency features supply the dominant classification cues.
+\findOcclusion\ As shown in Fig.~\ref{fig:audit_plots} (Left) and Table~\ref{tab:occlusion}, frequency occlusion assesses whether the network relies on cardiac frequency bands beyond row-matched random contiguous controls. Masking band B1 (20--150~Hz) produces a balanced accuracy drop of $-7.81\%$, which exceeds the row-matched random control threshold ($-2.01\% \pm 1.59\%$, reliance threshold $-5.18\%$). This demonstrates that the network relies heavily on the 20--150~Hz band. However, this low-frequency reliance reflects both cardiac acoustic energy (S1 and S2) and acquisition hardware characteristics (stethoscope resonance and low-frequency ambient rumble). Occluding bands B2 (150--500~Hz) and B3 (500--1000~Hz) produces drops within control variance ($-2.41\%$ and $-4.69\%$, respectively). Retaining only B1 preserves 83.66\% balanced accuracy and 93.94\% sensitivity, indicating that low-frequency features supply the dominant classification cues.
 
 \input{generated/tab_faith}
 
-\findFaithfulness\ Perturbation curves measure whether deleting high-attribution features degrades prediction confidence faster than random feature removal. Because deletion AUC is a lower-is-better metric, effective explanations should produce deletion AUC values below random deletion controls. Across all three methods, deletion AUCs (0.629 for Grad-CAM, 0.735 for Attention, 0.567 for SHAP) sit above the random deletion baseline (0.526). One-sided Wilcoxon signed-rank tests ($H_1: \text{AUC}_{\text{method}} < \text{AUC}_{\text{random}}$) yield $p \approx 1.00$, indicating that deletion attributions perform worse than random pixel removal. Deletion operates by replacing pixels with a constant zero decibel baseline, suggesting that out-of-distribution perturbation artifacts may distort model responses.
+\findFaithfulness\ As illustrated in Fig.~\ref{fig:audit_plots} (Right) and Table~\ref{tab:faith}, perturbation curves measure whether deleting high-attribution features degrades prediction confidence faster than random feature removal. Because deletion AUC is a lower-is-better metric, effective explanations should produce deletion AUC values below random deletion controls. Across all three methods, deletion AUCs (0.629 for Grad-CAM, 0.735 for Attention, 0.567 for SHAP) sit above the random deletion baseline (0.526). One-sided Wilcoxon signed-rank tests ($H_1: \text{AUC}_{\text{method}} < \text{AUC}_{\text{random}}$) yield $p \approx 1.00$, indicating that deletion attributions perform worse than random pixel removal. Deletion operates by replacing pixels with a constant zero decibel baseline, suggesting that out-of-distribution perturbation artifacts may distort model responses.
 
 \findSanity\ Cascading layer randomization confirms whether saliency maps depend on learned model parameters instead of edge detector artifacts. Under cascading weight randomization from the classification head down to early convolutional layers, the Spearman rank correlation of Grad-CAM heatmaps drops to $-0.02$, passing the Adebayo et al.\ \cite{adebayo} sanity check. This confirms that the model's spatial attributions depend on trained parameters instead of architecture-induced edge priors.
 
