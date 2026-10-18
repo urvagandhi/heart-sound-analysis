@@ -249,54 +249,84 @@ def run_audit(tag: str,
         json.dump(calib_res, f, indent=2)
 
     # 4. Band Occlusion Audit
-    print("\n[Audit 2/6] Frequency band occlusion audit ...")
-    occlusion_res = run_band_occlusion_audit(
-        model, test_loader, test_df, device, audio_cfg=audio_cfg, n_random_controls=20, seed=42
-    )
-    with open(out_dir / "occlusion.json", "w", encoding="utf-8") as f:
-        json.dump(occlusion_res, f, indent=2)
-    plot_occlusion_figures(occlusion_res, save_path=out_dir / "occlusion_bars.png")
+    occlusion_json = out_dir / "occlusion.json"
+    if occlusion_json.exists():
+        print(f"\n[Audit 2/6] Found cached occlusion results at {occlusion_json}; loading ...")
+        with open(occlusion_json, "r", encoding="utf-8") as f:
+            occlusion_res = json.load(f)
+    else:
+        print("\n[Audit 2/6] Frequency band occlusion audit ...")
+        occlusion_res = run_band_occlusion_audit(
+            model, test_loader, test_df, device, audio_cfg=audio_cfg, n_random_controls=20, seed=42
+        )
+        with open(occlusion_json, "w", encoding="utf-8") as f:
+            json.dump(occlusion_res, f, indent=2)
+        plot_occlusion_figures(occlusion_res, save_path=out_dir / "occlusion_bars.png")
 
     # 5. Faithfulness Deletion and Insertion Curves
-    print("\n[Audit 3/6] Faithfulness deletion and insertion curves ...")
-    faith_res = run_faithfulness_audit(
-        model, train_loader, test_dataset, test_df, device,
-        out_dir=out_dir, shap_n=shap_n, n_random_maps=5, seed=42
-    )
-    with open(out_dir / "faithfulness.json", "w", encoding="utf-8") as f:
-        json.dump(faith_res, f, indent=2)
-    plot_faithfulness_figures(faith_res, save_path=out_dir / "faithfulness_curves.png")
+    faith_json = out_dir / "faithfulness.json"
+    if faith_json.exists():
+        print(f"\n[Audit 3/6] Found cached faithfulness results at {faith_json}; loading ...")
+        with open(faith_json, "r", encoding="utf-8") as f:
+            faith_res = json.load(f)
+    else:
+        print("\n[Audit 3/6] Faithfulness deletion and insertion curves ...")
+        faith_res = run_faithfulness_audit(
+            model, train_loader, test_dataset, test_df, device,
+            out_dir=out_dir, shap_n=shap_n, n_random_maps=5, seed=42
+        )
+        with open(faith_json, "w", encoding="utf-8") as f:
+            json.dump(faith_res, f, indent=2)
+        plot_faithfulness_figures(faith_res, save_path=out_dir / "faithfulness_curves.png")
 
     # 6. Adebayo Sanity Check (Weight Randomization)
-    print("\n[Audit 4/6] Weight randomization sanity check ...")
-    sanity_res = run_sanity_check(
-        model, test_dataset, test_df, device, n_samples=100, seed=42
-    )
-    with open(out_dir / "sanity.json", "w", encoding="utf-8") as f:
-        json.dump(sanity_res, f, indent=2)
+    sanity_json = out_dir / "sanity.json"
+    if sanity_json.exists():
+        print(f"\n[Audit 4/6] Found cached sanity check results at {sanity_json}; loading ...")
+        with open(sanity_json, "r", encoding="utf-8") as f:
+            sanity_res = json.load(f)
+    else:
+        print("\n[Audit 4/6] Weight randomization sanity check ...")
+        sanity_res = run_sanity_check(
+            model, test_dataset, test_df, device, n_samples=100, seed=42
+        )
+        with open(sanity_json, "w", encoding="utf-8") as f:
+            json.dump(sanity_res, f, indent=2)
 
     # 7. Method Agreement (7x7 pooled)
-    print("\n[Audit 5/6] Pairwise explanation agreement audit ...")
-    # Load cohort from shap_values.npz saved in step 5
-    shap_data = np.load(out_dir / "shap_values.npz")
-    shap_sample_idx = shap_data["test_row_indices"]
-    shap_vals_list = [shap_data["shap_class_0"], shap_data["shap_class_1"]]
+    agree_json = out_dir / "agreement.json"
+    if agree_json.exists():
+        print(f"\n[Audit 5/6] Found cached method agreement results at {agree_json}; loading ...")
+        with open(agree_json, "r", encoding="utf-8") as f:
+            agree_res = json.load(f)
+    else:
+        print("\n[Audit 5/6] Pairwise explanation agreement audit ...")
+        # Load cohort from shap_values.npz saved in step 5
+        shap_data = np.load(out_dir / "shap_values.npz")
+        shap_sample_idx = shap_data["test_row_indices"]
+        shap_vals_list = [shap_data["shap_class_0"], shap_data["shap_class_1"]]
 
-    agree_res = run_agreement_audit(
-        model, test_dataset, shap_sample_idx, shap_vals_list, device
-    )
-    with open(out_dir / "agreement.json", "w", encoding="utf-8") as f:
-        json.dump(agree_res, f, indent=2)
+        agree_res = run_agreement_audit(
+            model, test_dataset, shap_sample_idx, shap_vals_list, device
+        )
+        with open(agree_json, "w", encoding="utf-8") as f:
+            json.dump(agree_res, f, indent=2)
 
     # 8. PhysioNet State Enrichment Audit
-    print("\n[Audit 6/6] PhysioNet state annotation enrichment audit ...")
-    enrich_res = run_enrichment_audit(
-        model, test_dataset, test_df, device,
-        annotations_dir=annotations_dir, raw_dir=raw_dir, results_dir=res_root
-    )
-    with open(out_dir / "enrichment.json", "w", encoding="utf-8") as f:
-        json.dump(enrich_res, f, indent=2)
-    plot_enrichment_figures(enrich_res, save_path=out_dir / "enrichment_bars.png")
+    enrich_json = out_dir / "enrichment.json"
+    if enrich_json.exists():
+        print(f"\n[Audit 6/6] Found cached state enrichment results at {enrich_json}; loading ...")
+        with open(enrich_json, "r", encoding="utf-8") as f:
+            enrich_res = json.load(f)
+    else:
+        print("\n[Audit 6/6] PhysioNet state annotation enrichment audit ...")
+        enrich_res = run_enrichment_audit(
+            model, test_dataset, test_df, device,
+            annotations_dir=annotations_dir, raw_dir=raw_dir, results_dir=res_root
+        )
+        with open(enrich_json, "w", encoding="utf-8") as f:
+            json.dump(enrich_res, f, indent=2)
+        plot_enrichment_figures(enrich_res, save_path=out_dir / "enrichment_bars.png")
 
     # 9. Regenerate sample overlays for 4 balanced cases
     print("\nRegenerating explanation figures for 4 balanced sample cases ...")

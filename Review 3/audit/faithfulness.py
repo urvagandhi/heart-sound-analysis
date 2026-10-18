@@ -121,21 +121,28 @@ def run_faithfulness_audit(model: HeartSoundModel,
     sel_abn = rng.choice(abn_idx, size=min(n_per, len(abn_idx)), replace=False)
     chosen_indices = np.concatenate([sel_norm, sel_abn])
 
-    # 1. Compute SHAP explanations on cohort
-    print(f"  [Faithfulness] Computing SHAP for {len(chosen_indices)} balanced samples ...")
-    shap_vals, shap_inputs, shap_labels, _ = compute_shap_values(
-        model, train_loader, test_dataset, device,
-        n_background=32, n_explain=len(chosen_indices), seed=seed,
-        test_indices=chosen_indices,
-    )
-    np.savez(
-        out_dir / "shap_values.npz",
-        shap_class_0=shap_vals[0],
-        shap_class_1=shap_vals[1],
-        inputs=shap_inputs.numpy() if isinstance(shap_inputs, torch.Tensor) else np.asarray(shap_inputs),
-        labels=shap_labels.numpy() if isinstance(shap_labels, torch.Tensor) else np.asarray(shap_labels),
-        test_row_indices=chosen_indices,
-    )
+    # 1. Compute or load SHAP explanations on cohort
+    shap_cache = out_dir / "shap_values.npz"
+    if shap_cache.exists():
+        print(f"  [Faithfulness] Found cached SHAP values at {shap_cache}; loading ...")
+        cached = np.load(shap_cache)
+        shap_vals = [cached["shap_class_0"], cached["shap_class_1"]]
+        chosen_indices = cached["test_row_indices"]
+    else:
+        print(f"  [Faithfulness] Computing SHAP for {len(chosen_indices)} balanced samples ...")
+        shap_vals, shap_inputs, shap_labels, _ = compute_shap_values(
+            model, train_loader, test_dataset, device,
+            n_background=32, n_explain=len(chosen_indices), seed=seed,
+            test_indices=chosen_indices,
+        )
+        np.savez(
+            shap_cache,
+            shap_class_0=shap_vals[0],
+            shap_class_1=shap_vals[1],
+            inputs=shap_inputs.numpy() if isinstance(shap_inputs, torch.Tensor) else np.asarray(shap_inputs),
+            labels=shap_labels.numpy() if isinstance(shap_labels, torch.Tensor) else np.asarray(shap_labels),
+            test_row_indices=chosen_indices,
+        )
 
     methods = ["Grad-CAM"]
     if hasattr(model, "mha"):
