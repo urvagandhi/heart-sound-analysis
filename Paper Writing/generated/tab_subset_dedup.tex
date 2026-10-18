@@ -1,19 +1,19 @@
 \begin{table}[t]
 \centering
-\caption{Per-Database Performance on Deduplicated Test Split}
+\caption{Per-Database Performance on Deduplicated Test Split (SE + MHSA, Seed 42)}
 \label{tab:subset_dedup}
 \begin{tabular}{lcccc}
 \toprule
 \textbf{Database} & \textbf{Samples} & \textbf{Accuracy (\%)} & \textbf{Normal Acc. (\%)} & \textbf{Abnormal Acc. (\%)} \\
 \midrule
-training-a &  61 & \pending & \pending & \pending \\
-training-b &  74 & \pending & \pending & \pending \\
-training-c &   5 & \pending & \pending & \pending \\
-training-d &   8 & \pending & \pending & \pending \\
-training-e & 321 & \pending & \pending & \pending \\
-training-f &  17 & \pending & \pending & \pending \\
+training-a &  62 & 66.1\% & 16.7\% & 86.4\% \\
+training-b &  73 & 72.6\% & 77.6\% & 53.3\% \\
+training-c &   5 & 80.0\% & 100.0\% & 75.0\% \\
+training-d &   8 & 75.0\% & 50.0\% & 100.0\% \\
+training-e & 321 & 99.1\% & 99.7\% & 92.6\% \\
+training-f &  17 & 52.9\% & 66.7\% & 20.0\% \\
 \midrule
-\textbf{Overall} & \textbf{486} & \pending & \pending & \pending \\
+\textbf{Overall} & \textbf{486} & \textbf{88.7\%} & \textbf{91.0\%} & \textbf{79.8\%} \\
 \bottomrule
 \end{tabular}
 \end{table}

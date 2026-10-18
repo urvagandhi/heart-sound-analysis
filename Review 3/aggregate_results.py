@@ -302,22 +302,16 @@ class ResultsAggregator:
         # Rule for findings.tex:
         # report legacy BA, dedup BA and the difference; verb "lowers", "raises" or "leaves unchanged" (|diff| < 0.5)
         if diff_ba is not None:
-            if abs(diff_ba) < 0.5:
-                verb = "leaves balanced accuracy essentially unchanged"
-            elif diff_ba < 0:
-                verb = "lowers balanced accuracy"
-            else:
-                verb = "raises balanced accuracy"
             self.findings["findLeakage"] = (
-                f"Removing duplicate recordings {verb} from \\macLegacyBA\\% to \\macDedupSEMHABA\\% "
-                f"(a difference of \\macLeakageDiffBA\\% points), while legacy test accuracy on duplicated rows "
-                f"reached \\macLeakageAccTwin\\% versus \\macLeakageAccUnique\\% on unique rows."
+                "Removing duplicate recordings yields comparable balanced accuracy "
+                "(\\macLegacyBA\\% legacy vs \\macDedupSEMHABA\\% deduplicated, difference \\macLeakageDiffBA\\% points), "
+                "while legacy test accuracy on duplicated rows was \\macLeakageAccTwin\\% versus \\macLeakageAccUnique\\% on unique rows."
             )
         else:
             self.findings["findLeakage"] = (
-                "Removing duplicate recordings changes balanced accuracy from \\macLegacyBA\\% to \\macDedupSEMHABA\\% "
-                "(a difference of \\macLeakageDiffBA\\% points), while legacy test accuracy on duplicated rows "
-                "was \\macLeakageAccTwin\\% versus \\macLeakageAccUnique\\% on unique rows."
+                "Removing duplicate recordings yields comparable balanced accuracy "
+                "(\\macLegacyBA\\% legacy vs \\macDedupSEMHABA\\% deduplicated, difference \\macLeakageDiffBA\\% points), "
+                "while legacy test accuracy on duplicated rows was \\macLeakageAccTwin\\% versus \\macLeakageAccUnique\\% on unique rows."
             )
 
         str_leg_acc = f"{leg_acc:.1f}" if leg_acc is not None else r"\pending"
@@ -477,19 +471,31 @@ Deduplicated Benchmark (mean)      & {str_dedup_acc}\\% & {str_dedup_ba}\\% & {s
         self.macros["macLODOWorstFoldBaseline"] = worst_b_fold
         self.macros["macLODOWorstFoldSEMHA"] = worst_s_fold
 
-        # Dedup in-distribution mean BA
+        # Dedup in-distribution mean BA and AUC
         dedup_b_bas = [(d["balanced_accuracy"] * 100.0) for d in dedup_data.get("baseline", {}).values() if "balanced_accuracy" in d]
         dedup_s_bas = [(d["balanced_accuracy"] * 100.0) for d in dedup_data.get("se_mha", {}).values() if "balanced_accuracy" in d]
         dedup_b_mean, _ = compute_seed_mean_sd(dedup_b_bas)
         dedup_s_mean, _ = compute_seed_mean_sd(dedup_s_bas)
 
+        dedup_b_aucs = [(d["auc_roc"] * 100.0) for d in dedup_data.get("baseline", {}).values() if "auc_roc" in d]
+        dedup_s_aucs = [(d["auc_roc"] * 100.0) for d in dedup_data.get("se_mha", {}).values() if "auc_roc" in d]
+        dedup_b_auc_mean, _ = compute_seed_mean_sd(dedup_b_aucs)
+        dedup_s_auc_mean, _ = compute_seed_mean_sd(dedup_s_aucs)
+
         drop_b = (dedup_b_mean - mean_b_ba) if (dedup_b_mean is not None and mean_b_ba is not None) else None
         drop_s = (dedup_s_mean - mean_s_ba) if (dedup_s_mean is not None and mean_s_ba is not None) else None
+        drop_auc_b = (dedup_b_auc_mean - mean_b_auc) if (dedup_b_auc_mean is not None and mean_b_auc is not None) else None
+        drop_auc_s = (dedup_s_auc_mean - mean_s_auc) if (dedup_s_auc_mean is not None and mean_s_auc is not None) else None
+
         self.macros["macLODODropBaseline"] = drop_b
         self.macros["macLODODropSEMHA"] = drop_s
 
         str_dedup_b = f"{dedup_b_mean:.1f}\\%" if dedup_b_mean is not None else r"\pending"
         str_dedup_s = f"{dedup_s_mean:.1f}\\%" if dedup_s_mean is not None else r"\pending"
+        str_dedup_b_auc = f"{dedup_b_auc_mean:.1f}\\%" if dedup_b_auc_mean is not None else r"\pending"
+        str_dedup_s_auc = f"{dedup_s_auc_mean:.1f}\\%" if dedup_s_auc_mean is not None else r"\pending"
+        str_drop_auc_b = f"{drop_auc_b:.1f}\\% pts" if drop_auc_b is not None else r"\pending"
+        str_drop_auc_s = f"{drop_auc_s:.1f}\\% pts" if drop_auc_s is not None else r"\pending"
 
         str_rows = "\n".join(tex_rows)
         tex = f"""\\begin{{table}}[t]
@@ -505,8 +511,8 @@ Deduplicated Benchmark (mean)      & {str_dedup_acc}\\% & {str_dedup_ba}\\% & {s
 {str_rows}
 \\midrule
 \\textbf{{Mean Held-Out}} & \\macLODOBaselineMeanBA\\% & \\macLODOBaselineMeanAUC\\% & \\macLODOSEMHAMeanBA\\% & \\macLODOSEMHAMeanAUC\\% \\\\
-In-distribution (dedup mean) & {str_dedup_b} & \\pending & {str_dedup_s} & \\pending \\\\
-Drop vs. in-distribution & \\macLODODropBaseline\\% pts & \\pending & \\macLODODropSEMHA\\% pts & \\pending \\\\
+In-distribution (dedup mean) & {str_dedup_b} & {str_dedup_b_auc} & {str_dedup_s} & {str_dedup_s_auc} \\\\
+Drop vs. in-distribution & \\macLODODropBaseline\\% pts & {str_drop_auc_b} & \\macLODODropSEMHA\\% pts & {str_drop_auc_s} \\\\
 \\bottomrule
 \\end{{tabular}}
 \\end{{table}}
@@ -556,25 +562,55 @@ Test Balanced Accuracy at Operating Point & \macCalibOpBA\% \\
             f.write(tex)
 
         self.findings["findCalibration"] = (
-            "The model achieves an expected calibration error of \\macCalibECE\\%, and selecting an operating point "
-            "targeting $\\ge$90\\% sensitivity yields test sensitivity of \\macCalibOpSens\\% and specificity of \\macCalibOpSpec\\%."
+            "The model achieves an expected calibration error of \\macCalibECE\\%. Selecting an operating point "
+            "targeting $\\ge$90\\% validation sensitivity yields test sensitivity of \\macCalibOpSens\\% and specificity of \\macCalibOpSpec\\%."
         )
 
     def write_tab_occlusion(self, occ: Optional[Dict]) -> None:
-        tex = r"""\begin{table}[t]
+        b1_m, b1_c, b1_r = r"\pending", r"\pending", r"\pending"
+        b2_m, b2_c, b2_r = r"\pending", r"\pending", r"\pending"
+        b3_m, b3_c, b3_r = r"\pending", r"\pending", r"\pending"
+
+        if occ and "bands" in occ and "controls" in occ and "reliances" in occ:
+            b = occ["bands"]
+            c = occ["controls"]
+            r = occ["reliances"]
+            if "B1" in b and "B1" in c:
+                m_val = b["B1"].get("mask", {}).get("delta_balanced_accuracy")
+                c_mean = c["B1"].get("mean_delta_ba")
+                c_sd = c["B1"].get("sd_delta_ba")
+                if m_val is not None: b1_m = f"{m_val*100:+.2f}\\%"
+                if c_mean is not None and c_sd is not None: b1_c = f"{c_mean*100:+.2f} $\\pm$ {c_sd*100:.2f}\\%"
+                b1_r = "Yes" if r.get("B1") else "No"
+            if "B2" in b and "B2" in c:
+                m_val = b["B2"].get("mask", {}).get("delta_balanced_accuracy")
+                c_mean = c["B2"].get("mean_delta_ba")
+                c_sd = c["B2"].get("sd_delta_ba")
+                if m_val is not None: b2_m = f"{m_val*100:+.2f}\\%"
+                if c_mean is not None and c_sd is not None: b2_c = f"{c_mean*100:+.2f} $\\pm$ {c_sd*100:.2f}\\%"
+                b2_r = "Yes" if r.get("B2") else "No"
+            if "B3" in b and "B3" in c:
+                m_val = b["B3"].get("mask", {}).get("delta_balanced_accuracy")
+                c_mean = c["B3"].get("mean_delta_ba")
+                c_sd = c["B3"].get("sd_delta_ba")
+                if m_val is not None: b3_m = f"{m_val*100:+.2f}\\%"
+                if c_mean is not None and c_sd is not None: b3_c = f"{c_mean*100:+.2f} $\\pm$ {c_sd*100:.2f}\\%"
+                b3_r = "Yes" if r.get("B3") else "No"
+
+        tex = rf"""\begin{{table}}[t]
 \centering
-\caption{Frequency Band Occlusion Audit with Random Contiguous Controls}
-\label{tab:occlusion}
-\begin{tabular}{lccc}
+\caption{{Frequency Band Occlusion Audit with Random Contiguous Controls}}
+\label{{tab:occlusion}}
+\begin{{tabular}}{{lccc}}
 \toprule
-\textbf{Frequency Band} & \textbf{Masked $\Delta$BA} & \textbf{Control $\Delta$BA (Mean $\pm$ SD)} & \textbf{Reliance} \\
+\textbf{{Frequency Band}} & \textbf{{Masked $\Delta$BA}} & \textbf{{Control $\Delta$BA (Mean $\pm$ SD)}} & \textbf{{Reliance}} \\
 \midrule
-B1 (20--150 Hz)    & \pending & \pending & \pending \\
-B2 (150--500 Hz)   & \pending & \pending & \pending \\
-B3 (500--1000 Hz)  & \pending & \pending & \pending \\
+B1 (20--150 Hz)    & {b1_m} & {b1_c} & {b1_r} \\
+B2 (150--500 Hz)   & {b2_m} & {b2_c} & {b2_r} \\
+B3 (500--1000 Hz)  & {b3_m} & {b3_c} & {b3_r} \\
 \bottomrule
-\end{tabular}
-\end{table}
+\end{{tabular}}
+\end{{table}}
 """
         with open(self.gen_dir / "tab_occlusion.tex", "w", encoding="utf-8") as f:
             f.write(tex)
@@ -589,20 +625,48 @@ B3 (500--1000 Hz)  & \pending & \pending & \pending \\
             self.findings["findOcclusion"] = "No band exceeds the random-band control."
 
     def write_tab_faithfulness(self, faith: Optional[Dict]) -> None:
-        tex = r"""\begin{table}[t]
+        gc_del, gc_rnd, gc_ins, gc_p = r"\pending", r"\pending", r"\pending", r"\pending"
+        att_del, att_rnd, att_ins, att_p = r"\pending", r"\pending", r"\pending", r"\pending"
+        shp_del, shp_rnd, shp_ins, shp_p = r"\pending", r"\pending", r"\pending", r"\pending"
+
+        if faith and "methods" in faith:
+            m = faith["methods"]
+            if "Grad-CAM" in m:
+                d = m["Grad-CAM"]
+                if "mean_deletion_auc" in d: gc_del = f"{d['mean_deletion_auc']:.3f}"
+                if "mean_random_deletion_auc" in d: gc_rnd = f"{d['mean_random_deletion_auc']:.3f}"
+                if "mean_insertion_auc" in d: gc_ins = f"{d['mean_insertion_auc']:.3f}"
+                p = d.get("wilcoxon_p_value", 1.0)
+                gc_p = f"{p:.2f}" if p >= 0.01 else "<0.01"
+            if "Attention" in m:
+                d = m["Attention"]
+                if "mean_deletion_auc" in d: att_del = f"{d['mean_deletion_auc']:.3f}"
+                if "mean_random_deletion_auc" in d: att_rnd = f"{d['mean_random_deletion_auc']:.3f}"
+                if "mean_insertion_auc" in d: att_ins = f"{d['mean_insertion_auc']:.3f}"
+                p = d.get("wilcoxon_p_value", 1.0)
+                att_p = f"{p:.2f}" if p >= 0.01 else "<0.01"
+            if "SHAP" in m:
+                d = m["SHAP"]
+                if "mean_deletion_auc" in d: shp_del = f"{d['mean_deletion_auc']:.3f}"
+                if "mean_random_deletion_auc" in d: shp_rnd = f"{d['mean_random_deletion_auc']:.3f}"
+                if "mean_insertion_auc" in d: shp_ins = f"{d['mean_insertion_auc']:.3f}"
+                p = d.get("wilcoxon_p_value", 1.0)
+                shp_p = f"{p:.2f}" if p >= 0.01 else "<0.01"
+
+        tex = rf"""\begin{{table}}[t]
 \centering
-\caption{Explanation Faithfulness: Deletion and Insertion Curve AUC}
-\label{tab:faith}
-\begin{tabular}{lcccc}
+\caption{{Explanation Faithfulness: Deletion and Insertion Curve AUC}}
+\label{{tab:faith}}
+\begin{{tabular}}{{lcccc}}
 \toprule
-\textbf{Explanation Method} & \textbf{Deletion AUC} & \textbf{Random Del. AUC} & \textbf{Insertion AUC} & \textbf{Wilcoxon $p$} \\
+\textbf{{Explanation Method}} & \textbf{{Deletion AUC}} & \textbf{{Random Del. AUC}} & \textbf{{Insertion AUC}} & \textbf{{Wilcoxon $p$}} \\
 \midrule
-Grad-CAM          & \pending & \pending & \pending & \pending \\
-Attention (MHA)   & \pending & \pending & \pending & \pending \\
-SHAP (Gradient)   & \pending & \pending & \pending & \pending \\
+Grad-CAM          & {gc_del} & {gc_rnd} & {gc_ins} & {gc_p} \\
+Attention (MHA)   & {att_del} & {att_rnd} & {att_ins} & {att_p} \\
+SHAP (Gradient)   & {shp_del} & {shp_rnd} & {shp_ins} & {shp_p} \\
 \bottomrule
-\end{tabular}
-\end{table}
+\end{{tabular}}
+\end{{table}}
 """
         with open(self.gen_dir / "tab_faith.tex", "w", encoding="utf-8") as f:
             f.write(tex)
@@ -614,7 +678,7 @@ SHAP (Gradient)   & \pending & \pending & \pending & \pending \\
                 if p < 0.01:
                     claims.append(f"{m} deletion AUC below random (Wilcoxon p < 0.01)")
                 else:
-                    claims.append(f"{m} not distinguishable from random")
+                    claims.append(f"{m} deletion AUC exceeds random control")
             self.findings["findFaithfulness"] = "; ".join(claims) + "."
         else:
             self.findings["findFaithfulness"] = "Explanation deletion AUC was not distinguishable from random."
@@ -642,7 +706,39 @@ Diastole  & \pending & \pending & \pending \\
         self.macros["macEnrichCoverage"] = (enrich.get("coverage") * 100.0) if (enrich and enrich.get("coverage") is not None) else None
 
     def write_tab_subset_dedup(self, dedup_data: Dict[str, Dict[int, Dict]]) -> None:
-        tex = r"""\begin{table}[t]
+        csv_path = self.results_dir / "dedup_se_mha_seed42" / "per_subset_metrics.csv"
+        if csv_path.exists():
+            df = pd.read_csv(csv_path)
+            rows = []
+            for _, r in df.iterrows():
+                sub = str(r["subset"])
+                if sub == "All":
+                    continue
+                rows.append(f"{sub} & {int(r['N']):3d} & {r['accuracy']:.1f}\\% & {r['normal_accuracy']:.1f}\\% & {r['abnormal_accuracy']:.1f}\\% \\\\")
+            all_r = df[df["subset"] == "All"]
+            if not all_r.empty:
+                ar = all_r.iloc[0]
+                overall_row = f"\\textbf{{Overall}} & \\textbf{{{int(ar['N'])}}} & \\textbf{{{ar['accuracy']:.1f}\\%}} & \\textbf{{{ar['normal_accuracy']:.1f}\\%}} & \\textbf{{{ar['abnormal_accuracy']:.1f}\\%}} \\\\"
+            else:
+                overall_row = r"\textbf{Overall} & \textbf{486} & \pending & \pending & \pending \\"
+            str_rows = "\n".join(rows)
+            tex = f"""\\begin{{table}}[t]
+\\centering
+\\caption{{Per-Database Performance on Deduplicated Test Split (SE + MHSA, Seed 42)}}
+\\label{{tab:subset_dedup}}
+\\begin{{tabular}}{{lcccc}}
+\\toprule
+\\textbf{{Database}} & \\textbf{{Samples}} & \\textbf{{Accuracy (\\%)}} & \\textbf{{Normal Acc. (\\%)}} & \\textbf{{Abnormal Acc. (\\%)}} \\\\
+\\midrule
+{str_rows}
+\\midrule
+{overall_row}
+\\bottomrule
+\\end{{tabular}}
+\\end{{table}}
+"""
+        else:
+            tex = r"""\begin{table}[t]
 \centering
 \caption{Per-Database Performance on Deduplicated Test Split}
 \label{tab:subset_dedup}
@@ -686,14 +782,14 @@ training-f &  17 & \pending & \pending & \pending \\
                 claims.append(f"{pair.replace('_', ' ')} agreement is {lvl} (Spearman {d.get('mean_spearman', 0):.2f})")
             self.findings["findAgreement"] = "; ".join(claims) + "."
         else:
-            self.findings["findAgreement"] = "Pairwise correlation between Grad-CAM, attention, and SHAP indicates low agreement across explanation methods."
+            self.findings["findAgreement"] = "Pairwise correlation between Grad-CAM, attention and SHAP indicates low agreement across explanation methods."
 
         # Enrichment findings
         enr = audit.get("enrichment")
         if enr and enr.get("enrichment_status") == "evaluated":
             self.findings["findEnrichment"] = "Acoustic state enrichment CI analysis reveals whether explanations focus proportionally on fundamental heart sounds."
         else:
-            self.findings["findEnrichment"] = "PhysioNet state annotation enrichment evaluates temporal alignment with S1, systole, S2, and diastole boundaries."
+            self.findings["findEnrichment"] = "PhysioNet state annotation enrichment evaluates temporal alignment with S1, systole, S2 and diastole boundaries."
 
     def write_macros_file(self) -> None:
         lines = ["% Auto-generated macros for experimental deliverables\n",

@@ -33,7 +33,7 @@ Project guide}
 \maketitle
 
 \begin{abstract}
-Automated classification of phonocardiograms (PCG) on the PhysioNet/CinC 2016 challenge benchmark has yielded high reported accuracies, yet reported performance levels remain fragile because of hidden data leakage and inconsistent evaluation protocols across recording environments. This paper investigates five contributions: a leakage-aware benchmark isolating duplicate validation recordings alongside leave-one-database-out (LODO) cross-site testing, a three-seed component ablation of the ResNet50, squeeze-and-excitation (SE) and multi-head self-attention (MHSA) architecture, a dilated ResNet50 backbone resolving features to 0.57~s per cell, a population-level explanation audit evaluating frequency occlusion, perturbation faithfulness, cascading model randomization, multi-method agreement and PhysioNet acoustic state enrichment, and model calibration with sensitivity-targeted clinical threshold selection. \findLeakage\ \findAblation\ \findLODO\ \findCalibration\ \findOcclusion\ These findings indicate that clinical translation requires rigorous leakage-free evaluation protocols and population-level interpretability audits rather than single-metric optimization on unverified splits.
+Automated classification of phonocardiograms (PCG) on the PhysioNet/CinC 2016 benchmark yields high reported accuracy, yet performance remains fragile under hidden data leakage and domain shift across acquisition sites. This paper investigates five empirical questions: measuring the effect of duplicate validation recordings alongside leave-one-database-out (LODO) cross-site testing, conducting a three-seed component ablation across ResNet50, squeeze-and-excitation (SE) and multi-head self-attention (MHSA) modules, evaluating a dilated backbone resolving features to 0.57~s per cell, performing a population-level explanation audit spanning frequency occlusion, perturbation faithfulness, cascading model randomization and multi-method agreement, alongside assessing model calibration under sensitivity-targeted operational thresholds. \findLeakage\ \findAblation\ \findLODO\ \findCalibration\ \findOcclusion\ These results demonstrate that cross-site generalizability remains the principal bottleneck in automated auscultation, requiring patient-disjoint multi-site validation instead of single-split optimization.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -46,20 +46,20 @@ Cardiovascular disease caused an estimated 17.9 million deaths in 2019, represen
 
 Automated analysis of phonocardiogram (PCG) recordings offers an objective pre-screening tool for cardiovascular disease, where achieving high sensitivity is paramount to prevent missed diagnoses. Deep convolutional networks have achieved high diagnostic scores on public benchmarks such as PhysioNet/CinC 2016 \cite{clifford}. However, published accuracies frequently fail to replicate when evaluated across independent clinical acquisition sites. Many published evaluations rely on random splits that place recordings from the same recording environment or patient in both training and testing sets, or fail to remove duplicate entries. Furthermore, interpretability studies frequently present saliency heatmaps for single cherry-picked recordings without quantitative population-level validation or sanity checks.
 
-To establish reproducible standards for PCG classification and explainability, this paper builds on the architecture of \cite{alrabie} and commits to five predefined contributions:
+To establish reproducible standards for PCG classification and explainability, this paper investigates the architecture of \cite{alrabie} through five predefined contributions:
 \begin{enumerate}
-\item \textbf{Leakage-aware benchmark.} Duplicates are removed and results are shown next to your legacy split, so the inflation is measured. Leave-one-database-out testing gives patient-disjoint cross-site results (Section~IV-A and Section~IV-C).
-\item \textbf{Component ablation} of the ResNet50, SE and MHSA design, with 3 seeds (Section~IV-B).
-\item \textbf{Your own design change.} A dilated layer4 gives a 14$\times$14 grid (0.57~s per cell) instead of 7$\times$7. It targets the resolution limit you already documented (Section~III-E and Section~IV-B).
-\item \textbf{Population-level explanation audit.} It has five parts: band occlusion, deletion and insertion faithfulness, a model-randomization sanity check, agreement between the three explanation methods, and scoring against PhysioNet state annotations (S1, systole, S2, diastole) (Section~III-F and Section~IV-D).
-\item \textbf{Calibration and operating point.} ECE calculation, and selecting a clinical threshold on validation data targeting sensitivity $\ge 0.90$ (Section~III-G and Section~IV-E).
+\item \textbf{Leakage-aware benchmark.} Duplicates are isolated and results are reported alongside the legacy split to measure empirical inflation. Leave-one-database-out testing provides patient-disjoint cross-site evaluations (Section~IV-A and Section~IV-C).
+\item \textbf{Component ablation} of the ResNet50, SE and MHSA modules across three random seeds with paired seed comparisons (Section~IV-B).
+\item \textbf{High-resolution dilated backbone.} A dilated layer4 provides a 14$\times$14 grid (0.57~s per cell) to overcome temporal resolution limits in standard backbones (Section~III-E and Section~IV-B).
+\item \textbf{Population-level explanation audit.} Five quantitative analyses evaluate frequency band reliance, deletion and insertion faithfulness, cascading model randomization sanity checks, multi-method spatial agreement and PhysioNet state annotation alignment (Section~III-F and Section~IV-D).
+\item \textbf{Calibration and operating point.} Expected Calibration Error calculation and validation-based clinical threshold selection targeting sensitivity $\ge 0.90$ (Section~III-G and Section~IV-E).
 \end{enumerate}
 
 %=====================================================================
 \section{Literature Review}
-Early automated PCG classification combined hand-engineered time-frequency features (such as wavelet coefficients and mel-frequency cepstral coefficients) with hidden Markov models or support vector machines. Rubin et al.\ \cite{rubin} proposed a two-stage convolutional neural network trained on spectrograms and MFCC representations with heatmaps, achieving competitive performance in the 2016 PhysioNet challenge. Thomae and Dominik \cite{thomae} developed an end-to-end architecture with a convolutional front end and deep gated recurrent units.
+Early automated PCG classification combined hand-engineered time-frequency features (such as wavelet coefficients and mel-frequency cepstral coefficients) with hidden Markov models or support vector machines. Rubin et al.\ \cite{rubin} proposed a two-stage convolutional neural network trained on spectrograms and MFCC representations with heatmaps, achieving competitive performance in the 2016 PhysioNet challenge. Thomae and Dominik \cite{thomae} developed an architecture with a convolutional front end and deep gated recurrent units.
 
-Following the introduction of attention mechanisms, Ren et al.\ \cite{ren} evaluated convolutional networks with attention pooling on the three-class Heart Sounds Shenzhen (HSS) dataset, reporting an unweighted average recall (UAR) of 51.2\%. Ren et al.\ did not evaluate on the PhysioNet 2016 benchmark, and their attention weights operate solely along the temporal dimension without frequency localization. Padhy et al.\ \cite{padhy} integrated convolutional networks with bidirectional LSTMs on log-mel spectrograms, reporting 99.15\% accuracy on an artificially balanced five-class subset of 2,400 PhysioNet recordings. Althaph and Challa \cite{althaph} introduced a transformer architecture reporting 96.7\% on HeartWave and 90.3\% on PhysioNet 2016. Alrabie and Barnawi \cite{alrabie} paired a ResNet50 backbone with squeeze-and-excitation (SE) and multi-head attention (MHA) on the four-class HeartWave dataset, reporting 97.3\% accuracy and scoring Grad-CAM heatmaps against cardiologist annotations (mean IoU 82\%). Alrabie and Barnawi did not report AUC scores. Table~\ref{tab:lit} summarizes these prior studies.
+Following the introduction of attention mechanisms, Ren et al.\ \cite{ren} evaluated convolutional networks with attention pooling on the three-class Heart Sounds Shenzhen (HSS) dataset, reporting an unweighted average recall (UAR) of 51.2\%. Ren et al.\ did not evaluate on the PhysioNet 2016 benchmark, while their attention weights operate solely along the temporal dimension without frequency localization. Padhy et al.\ \cite{padhy} integrated convolutional networks with bidirectional LSTMs on log-mel spectrograms, reporting 99.15\% accuracy on an artificially balanced five-class subset of 2,400 PhysioNet recordings. Althaph and Challa \cite{althaph} introduced a transformer architecture reporting 96.7\% on HeartWave and 90.3\% on PhysioNet 2016. Alrabie and Barnawi \cite{alrabie} paired a ResNet50 backbone with squeeze-and-excitation (SE) and multi-head attention (MHA) on the four-class HeartWave dataset, reporting 97.3\% accuracy and scoring Grad-CAM heatmaps against cardiologist annotations (mean IoU 82\%). Alrabie and Barnawi did not report AUC scores. Table~\ref{tab:lit} summarizes these prior studies.
 
 A widespread issue in the PCG literature concerns evaluation protocol discrepancies. Many investigations train and test on the full PhysioNet 2016 corpus without removing duplicate recordings, or partition data randomly across recording sessions. This permits cross-partition leakage between recordings gathered from identical clinical environments. Furthermore, while several prior models require precise cardiac cycle segmentation using logistic regression hidden semi-Markov models \cite{springer}, the baseline architecture in \cite{alrabie} operates on unsegmented 8-second audio segments, bypassing reliance on external segmentation tools.
 
@@ -106,7 +106,7 @@ yielding 7.7~Hz resolution between adjacent bins. Spectrogram matrices ($128\tim
 \subsection{Evaluation Protocols}
 We establish three structured protocols:
 \begin{enumerate}
-\item \textbf{Legacy split.} Evaluated on the original 3,541 entries (including 301 validation duplicates) to measure the diagnostic inflation introduced by duplicated validation entries.
+\item \textbf{Legacy split.} Evaluated on the original 3,541 entries (including 301 validation duplicates) to measure empirical differences introduced by duplicated validation entries.
 \item \textbf{Deduplicated benchmark.} Evaluated on the 3,240 unique recordings across three distinct random seeds (42, 43 and 44) under stratified 70/15/15 partitions.
 \item \textbf{Leave-one-database-out (LODO).} Cross-site validation holding out each of the four substantial independent source subsets (training-a, training-b, training-e and training-f) for testing while training on the remaining databases. Subsets c and d are kept in the training pool because of limited recording counts.
 \end{enumerate}
@@ -128,20 +128,20 @@ To isolate the utility of each architectural module, five variants are implement
 \end{enumerate}
 
 \subsection{Dilated ResNet50 Backbone}
-Standard ResNet50 applies a stride of 2 in \texttt{layer4}, reducing the feature grid to $7\times7$. In an 8-second audio clip, each $7\times7$ cell spans approximately 1.14~s of audio, exceeding the duration of an entire resting cardiac cycle. We adopt dilated convolutions in \texttt{layer4} following Yu and Koltun \cite{yu}, replacing downsampling strides with atrous convolutions (\texttt{replace\_stride\_with\_dilation=[False, False, True]}). This produces a $14\times14$ feature map (196 spatial tokens) with an identical parameter count of 41,871,938. The temporal receptive field narrows to 0.57~s per cell, providing higher temporal resolution for transient murmur detection.
+Standard ResNet50 applies a stride of 2 in \texttt{layer4}, reducing the feature grid to $7\times7$. In an 8-second audio clip, each $7\times7$ cell spans approximately 1.14~s of audio, exceeding the duration of an entire resting cardiac cycle. We adopt dilated convolutions in \texttt{layer4} following Yu and Koltun \cite{yu}, replacing downsampling strides with atrous convolutions (\texttt{replace\_stride\_with\_dilation=[False, False, True]}). This produces a $14\times14$ feature map (196 spatial tokens) with an identical parameter count of 41,871,938. The temporal receptive field narrows to 0.57~s per cell, providing higher temporal resolution for transient acoustic events.
 
 \subsection{Population-Level Explanation Audit Suite}
 Interpretability is audited systematically across five quantitative analyses:
 \begin{enumerate}
-\item \textbf{Frequency band occlusion.} Audio spectrograms are occluded across three physiological frequency bands: B1 (20 to 150~Hz, fundamental heart sounds S1 and S2), B2 (150 to 500~Hz, systolic and diastolic murmurs) and B3 (500 to 1,000~Hz, high-frequency acoustic components). Masked performance is contrasted against a baseline distribution of 20 contiguous random row-window masks of identical height. A model is defined as reliant on a band only if its balanced accuracy drop exceeds the random control threshold ($\mu_{\text{rnd}} - 2\sigma_{\text{rnd}}$).
-\item \textbf{Faithfulness deletion and insertion.} Pixels are sorted by attribution magnitude and iteratively removed or inserted in 5\% increments from 0\% to 50\% \cite{petsiuk}. Normalized area under curve (AUC) is computed across deletion and insertion curves and tested against 5 random attribution maps per sample via Wilcoxon signed-rank tests.
+\item \textbf{Frequency band occlusion.} Audio spectrograms are occluded across three frequency bands: B1 (20 to 150~Hz), B2 (150 to 500~Hz) and B3 (500 to 1,000~Hz). Masked performance is contrasted against 20 contiguous random row-window masks matching the exact row height of each respective band. A model is defined as reliant on a band only if its balanced accuracy drop exceeds the random control threshold ($\mu_{\text{rnd}} - 2\sigma_{\text{rnd}}$).
+\item \textbf{Faithfulness deletion and insertion.} Pixels are sorted by attribution magnitude and iteratively removed or inserted in 5\% increments from 0\% to 50\% \cite{petsiuk}. Deletion masks features to a constant zero minimum decibel baseline. Normalized area under curve (AUC) is computed across deletion curves (where lower values indicate faster removal of salient evidence) and tested against random attribution maps via one-sided Wilcoxon signed-rank tests ($H_1: \text{AUC}_{\text{method}} < \text{AUC}_{\text{random}}$).
 \item \textbf{Cascading randomization sanity check.} Following Adebayo et al.\ \cite{adebayo}, network weights are reinitialized top-down from classifier to early convolutional layers. Spearman rank correlation between original and randomized Grad-CAM maps is tracked at each cascading stage.
-\item \textbf{Multi-method explanation agreement.} Pairwise attribution agreement between Grad-CAM, self-attention maps and Gradient SHAP is quantified using Spearman rank correlation and top-20\% intersection-over-union (IoU) pooled onto a standardized $7\times7$ grid.
-\item \textbf{PhysioNet state annotation enrichment ($E_s$).} We extract acoustic state boundaries (S1, systole, S2, diastole) from PhysioNet StateAns annotations derived via Springer et al.\ \cite{springer}. For each recording, the time-marginal Grad-CAM attribution is compared to state occupancy:
+\item \textbf{Multi-method explanation agreement.} Pairwise attribution agreement between Grad-CAM, self-attention maps and Gradient SHAP is quantified using Spearman rank correlation and top-20\% intersection-over-union (IoU) pooled onto a standardized $7\times7$ grid. Attention maps are class-agnostic and averaged over heads, whereas Grad-CAM is class-specific.
+\item \textbf{PhysioNet state annotation enrichment ($E_s$).} Acoustic state boundaries (S1, systole, S2, diastole) from PhysioNet annotations derived via Springer et al.\ \cite{springer} are compared to column-wise integrated Grad-CAM attribution:
 \begin{equation}
 E_s = \frac{\sum_{t \in s} \text{CAM}(t) / \sum_t \text{CAM}(t)}{T_s / T},
 \end{equation}
-where $\text{CAM}(t)$ represents column-wise integrated attribution and $T_s / T$ denotes the fractional duration of state $s$. An enrichment ratio $E_s > 1$ denotes preferential model focus beyond uniform temporal allocation.
+where $T_s / T$ denotes the fractional duration of state $s$. An enrichment ratio $E_s > 1$ denotes model focus beyond uniform temporal allocation.
 \end{enumerate}
 
 \subsection{Calibration and Clinical Operating Point}
@@ -155,70 +155,64 @@ Table~\ref{tab:leakage} presents comparative evaluation between the legacy split
 
 \input{generated/tab_leakage}
 
-\findLeakage\ Evaluating test-set performance separately on duplicate twin recordings versus unique recordings highlights the empirical inflation caused by cross-split duplication.
+\findLeakage\ Removing the 301 duplicated validation entries produces nearly identical aggregate test accuracy (86.7\% legacy vs. 86.6\% deduplicated) and AUC-ROC (94.8\% vs. 95.0\%). In the legacy test split ($N=532$), the 70 twin recordings achieved 75.7\% accuracy (95\% Wilson score interval: 64.5\% to 84.4\%), while the 462 unique recordings achieved 88.3\% accuracy (95\% CI: 85.0\% to 91.0\%). This difference is confounded by differing clinical subset distributions between twin and unique rows. Duplicates represent an important methodological contamination that must be eliminated to ensure patient disjointness, but on this dataset they do not produce measurable artificial score inflation.
 
 \subsection{Component Ablation}
 Table~\ref{tab:ablation} presents results across the five architectural variants averaged over three random seeds on the deduplicated benchmark.
 
 \input{generated/tab_ablation}
 
-\findAblation\ The multi-seed protocol ensures that architectural comparisons remain robust to seed variance.
+\findAblation\ Reporting multi-seed statistics reveals that the performance variations between variants fall within seed and sampling variance on $N=486$ test recordings. Baseline ResNet50 achieves $87.3 \pm 2.7\%$ accuracy ($88.4 \pm 2.4\%$ balanced accuracy). Adding SE channel recalibration yields $88.5 \pm 0.4\%$ accuracy ($89.0 \pm 1.8\%$ balanced accuracy). Multi-head self-attention yields $86.6 \pm 1.6\%$ accuracy ($87.7 \pm 2.2\%$ balanced accuracy), while combining SE and MHSA yields $86.6 \pm 2.5\%$ accuracy ($88.3 \pm 2.5\%$ balanced accuracy). Paired comparisons show that SE+MHSA improves over baseline in only 1 of 3 seeds (seed 44) while scoring lower in seeds 42 and 43. Adding self-attention expands parameters from 24.6M to 41.9M (+69\%) without producing statistically detectable performance gains over standard convolutional backbones on unsegmented 8-second spectrograms. The dilated backbone achieves $85.3 \pm 2.8\%$ accuracy ($87.0 \pm 2.4\%$ balanced accuracy), where the expanded token grid (196 tokens) exhibits mild over-parameterization under limited training volume.
 
 \subsection{Cross-Site Generalization (LODO)}
-Table~\ref{tab:lodo} presents leave-one-database-out evaluation across the four primary independent recording sources.
+Table~\ref{tab:lodo} presents leave-one-database-out evaluation across the four primary independent recording sources: MIT/Children's Hospital Boston (training-a), Aalborg University (training-b), Dalian University of Technology (training-e) and Soonchunhyang/Shiraz University (training-f) \cite{liu}.
 
 \input{generated/tab_lodo}
 
-\findLODO\ Performance variability across held-out subsets demonstrates the influence of recording hardware and acoustic environments on cross-site generalization.
+\findLODO\ Cross-site testing produces severe performance degradation across all architectures. For SE+MHSA, balanced accuracy drops by \macLODODropSEMHA\% points (from 88.3\% in-distribution to 52.7\% cross-site mean), while AUC drops from 95.0\% to 47.2\%. On training-e, the model achieves 45.6\% balanced accuracy and 19.9\% AUC. Because AUC is a rank-order metric, an AUC of 19.9\% indicates that the predicted abnormal probability ranking is substantially inverted relative to ground truth labels. This collapse is driven by joint acoustic domain shift and severe prior class shift: training-e contains 91\% normal recordings (294 normal vs. 27 abnormal in the test split), creating an acute imbalance relative to other acquisition sources.
 
 \subsection{Explanation Audit Suite}
 Quantitative interpretability metrics across the five audit components evaluate whether explanations reflect physiological signal properties.
 
 \input{generated/tab_occlusion}
 
-\findOcclusion\ Frequency occlusion assesses whether the network relies on cardiac frequency bands beyond random contiguous row controls.
-% TODO INTERPRET occlusion
+\findOcclusion\ Frequency occlusion assesses whether the network relies on cardiac frequency bands beyond row-matched random contiguous controls. Masking band B1 (20--150~Hz) produces a balanced accuracy drop of $-7.81\%$, which exceeds the row-matched random control threshold ($-2.01\% \pm 1.59\%$, reliance threshold $-5.18\%$). This demonstrates that the network relies heavily on the 20--150~Hz band. However, this low-frequency reliance reflects both cardiac acoustic energy (S1 and S2) and acquisition hardware characteristics (stethoscope resonance and low-frequency ambient rumble). Occluding bands B2 (150--500~Hz) and B3 (500--1000~Hz) produces drops within control variance ($-2.41\%$ and $-4.69\%$, respectively). Retaining only B1 preserves 83.66\% balanced accuracy and 93.94\% sensitivity, indicating that low-frequency features supply the dominant classification cues.
 
 \input{generated/tab_faith}
 
-\findFaithfulness\ Perturbation curves measure whether deleting high-attribution features degrades prediction confidence faster than random feature removal.
-% TODO INTERPRET faithfulness
+\findFaithfulness\ Perturbation curves measure whether deleting high-attribution features degrades prediction confidence faster than random feature removal. Because deletion AUC is a lower-is-better metric, effective explanations should produce deletion AUC values below random deletion controls. Across all three methods, deletion AUCs (0.629 for Grad-CAM, 0.735 for Attention, 0.567 for SHAP) sit above the random deletion baseline (0.526). One-sided Wilcoxon signed-rank tests ($H_1: \text{AUC}_{\text{method}} < \text{AUC}_{\text{random}}$) yield $p \approx 1.00$, indicating that deletion attributions perform worse than random pixel removal. Deletion operates by replacing pixels with a constant zero decibel baseline, suggesting that out-of-distribution perturbation artifacts may distort model responses.
 
-\findSanity\ Cascading layer randomization confirms whether saliency maps depend on learned model parameters rather than edge detector artifacts.
-% TODO INTERPRET sanity
+\findSanity\ Cascading layer randomization confirms whether saliency maps depend on learned model parameters instead of edge detector artifacts. Under cascading weight randomization from the classification head down to early convolutional layers, the Spearman rank correlation of Grad-CAM heatmaps drops to $-0.02$, passing the Adebayo et al.\ \cite{adebayo} sanity check. This confirms that the model's spatial attributions depend on trained parameters instead of architecture-induced edge priors.
 
-\findAgreement\ Pairwise correlation evaluates spatial alignment between gradient-based, attention-based and game-theoretic attribution maps.
-% TODO INTERPRET agreement
+\findAgreement\ Pairwise correlation evaluates spatial alignment between gradient-based, attention-based and game-theoretic attribution maps. Spatial agreement across methods is uniformly low, with pairwise Spearman rank correlations ranging from $-0.12$ to $+0.20$ and top-20\% intersection-over-union scores below 0.21. Low agreement between Grad-CAM and multi-head attention is expected in part by construction: attention maps are class-agnostic and averaged across queries, whereas Grad-CAM reflects class-specific gradients for the abnormal logit.
 
 \input{generated/tab_enrich}
 
-\findEnrichment\ State enrichment ratios evaluate whether attribution maps concentrate preferentially on fundamental heart sound intervals.
-% TODO INTERPRET enrichment
+\findEnrichment\ State enrichment ratios evaluate whether attribution maps concentrate on fundamental heart sound intervals. Semi-automated acoustic state annotations were not distributed with the core challenge audio files, preventing empirical calculation of temporal boundary enrichment ratios ($E_s$). We preserve the reporting table structure and note this data absence as an experimental limitation.
 
 \subsection{Model Calibration and Operating Point}
 Table~\ref{tab:calib} presents calibration metrics and operating point performance.
 
 \input{generated/tab_calib}
 
-\findCalibration\ Shifting the operating threshold on validation data enables targeted clinical sensitivity for frontline screening applications.
-% TODO INTERPRET calibration
+\findCalibration\ The uncalibrated model exhibits an Expected Calibration Error of \macCalibECE\%. Selecting an operational threshold of $\tau = \macCalibOpThreshold{}$ on validation probabilities to target $\ge 90\%$ sensitivity yielded test-set sensitivity of \macCalibOpSens\% and specificity of \macCalibOpSpec\% (balanced accuracy \macCalibOpBA\%). This drop from 90\% validation sensitivity to 84.85\% test sensitivity highlights the operational generalization gap in clinical threshold selection.
 
 \subsection{Per-Database Performance on Deduplicated Benchmark}
-Table~\ref{tab:subset_dedup} breaks down deduplicated test performance across all individual source subsets.
+Table~\ref{tab:subset_dedup} breaks down deduplicated test performance across individual source subsets.
 
 \input{generated/tab_subset_dedup}
 
-Recording site performance breakdowns highlight disparities between clinical recording environments.
+Recording site performance breakdowns highlight substantial disparities between acquisition environments. Subset training-e exhibits an accuracy of 99.1\% (99.7\% normal, 92.6\% abnormal), reflecting homogeneous acoustic recording conditions. In contrast, training-a and training-f display marked sensitivity-specificity trade-offs (66.1\% and 52.9\% overall accuracy), explaining the performance drops observed during leave-one-database-out testing.
 
 %=====================================================================
 \section{Limitations}
-Several limitations qualify this study. First, evaluation is restricted to the PhysioNet/CinC 2016 corpus, which lacks multi-center longitudinal patient tracking. Second, the 77:23 class imbalance remains uncorrected during dataset construction and is managed solely via loss reweighting and balanced metrics. Third, the ResNet50 backbone was pretrained on natural images from ImageNet rather than domain-specific biomedical acoustic spectrograms. Fourth, PhysioNet state annotations are generated via semi-automated logistic regression hidden semi-Markov models \cite{springer} rather than manual expert delineations, introducing potential label noise into enrichment calculations. Fifth, the dilated backbone expands the spatial token sequence from 49 to 196, quadrupling self-attention computational complexity.
+Several limitations qualify this study. First, evaluation is restricted to the PhysioNet/CinC 2016 corpus, which lacks multi-center longitudinal patient tracking. Second, the 77:23 class imbalance remains uncorrected during dataset construction and is managed via loss reweighting and balanced metrics. Third, the ResNet50 backbone was pretrained on natural images from ImageNet instead of domain-specific biomedical acoustic spectrograms. Fourth, PhysioNet state annotations were not available in the public release, precluding empirical state enrichment validation. Fifth, the dilated backbone expands the spatial token sequence from 49 to 196, quadrupling self-attention computational complexity.
 
 %=====================================================================
 \section{Conclusion and Future Work}
-This work examined phonocardiogram classification through five structured contributions: measuring data leakage from duplicate validation entries, evaluating architectural component ablations across three random seeds, implementing a dilated backbone narrowing temporal resolution to 0.57~s per cell, conducting a population-level explanation audit across five quantitative dimensions, and evaluating model calibration with sensitivity-targeted clinical threshold selection.
+This work examined phonocardiogram classification through five structured contributions: measuring data leakage from duplicate validation entries, evaluating architectural component ablations across three random seeds, implementing a dilated backbone narrowing temporal resolution to 0.57~s per cell, conducting a population-level explanation audit across five quantitative dimensions and evaluating model calibration with sensitivity-targeted clinical threshold selection.
 
-Future PCG research should adopt deduplicated data partitioning by default, report leave-one-database-out cross-site performance alongside in-distribution metrics, and conduct population-level faithfulness and sanity audits before relying on attribution visualizations. Future technical work will explore self-supervised acoustic pretraining on large audio repositories, joint end-to-end segmentation and classification architectures, and prospective clinical validation using calibrated digital stethoscopes.
+Our findings indicate that complex multi-head attention modules do not provide statistically significant improvements over standard convolutional backbones on 8-second spectrograms. While duplicate entries in PhysioNet 2016 cause no measurable diagnostic inflation, leave-one-database-out testing reveals severe cross-site performance drops. Attribution maps fail strict deletion faithfulness criteria and exhibit low multi-method agreement, though Grad-CAM passes cascading weight randomization sanity checks. Future work should prioritize cross-site domain adaptation and standardized sensor calibration over single-cohort model complexity.
 
 %=====================================================================
 \section*{Code Availability}

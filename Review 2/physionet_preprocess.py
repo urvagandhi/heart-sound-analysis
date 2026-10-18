@@ -31,8 +31,8 @@ import matplotlib.pyplot as plt
 # STEP 1 — DOWNLOAD
 # ─────────────────────────────────────────────
 # The dataset has 6 training sub-sets (a–f) + validation
-# Each sub-set has .wav files + a REFERENCE.csv with labels
-# Labels: 1 = normal, -1 = abnormal
+# Raw PhysioNet REFERENCE.csv labels: -1 = normal, 1 = abnormal
+# (remapped in Step 2 to: 0 = normal, 1 = abnormal)
 
 DATA_URL_BASE = "https://physionet.org/files/challenge-2016/1.0.0/"
 

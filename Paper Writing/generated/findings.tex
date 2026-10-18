@@ -1,10 +1,10 @@
 % Auto-generated rule-based findings sentences
-\providecommand{\findAblation}{Component ablation across 3 seeds shows no consistent difference over baseline.}
-\providecommand{\findAgreement}{Pairwise correlation between Grad-CAM, attention, and SHAP indicates low agreement across explanation methods.}
-\providecommand{\findCalibration}{The model achieves an expected calibration error of \macCalibECE\%, and selecting an operating point targeting $\ge$90\% sensitivity yields test sensitivity of \macCalibOpSens\% and specificity of \macCalibOpSpec\%.}
-\providecommand{\findEnrichment}{PhysioNet state annotation enrichment evaluates temporal alignment with S1, systole, S2, and diastole boundaries.}
-\providecommand{\findFaithfulness}{Explanation deletion AUC was not distinguishable from random.}
+\providecommand{\findAblation}{+ SE Block shows no consistent difference over baseline; + MHSA (no SE) shows no consistent difference over baseline; + SE + MHSA [2] shows no consistent difference over baseline; + SE + MHSA (Dilated) shows no consistent difference over baseline.}
+\providecommand{\findAgreement}{Grad-CAM vs SHAP agreement is low (Spearman 0.20); Grad-CAM vs Attention agreement is low (Spearman -0.12); Attention vs SHAP agreement is low (Spearman -0.01).}
+\providecommand{\findCalibration}{The model achieves an expected calibration error of \macCalibECE\%. Selecting an operating point targeting $\ge$90\% validation sensitivity yields test sensitivity of \macCalibOpSens\% and specificity of \macCalibOpSpec\%.}
+\providecommand{\findEnrichment}{PhysioNet state annotation enrichment evaluates temporal alignment with S1, systole, S2 and diastole boundaries.}
+\providecommand{\findFaithfulness}{Grad-CAM deletion AUC exceeds random control; Attention deletion AUC exceeds random control; SHAP deletion AUC exceeds random control.}
 \providecommand{\findLODO}{Cross-site leave-one-database-out testing drops balanced accuracy by \macLODODropSEMHA\% points for SE+MHSA (mean held-out \macLODOSEMHAMeanBA\%, AUC \macLODOSEMHAMeanAUC\%), with worst performance on fold \macLODOWorstFoldSEMHA{}.}
-\providecommand{\findLeakage}{Removing duplicate recordings changes balanced accuracy from \macLegacyBA\% to \macDedupSEMHABA\% (a difference of \macLeakageDiffBA\% points), while legacy test accuracy on duplicated rows was \macLeakageAccTwin\% versus \macLeakageAccUnique\% on unique rows.}
-\providecommand{\findOcclusion}{No band exceeds the random-band control.}
-\providecommand{\findSanity}{Cascading weight randomization sanity check confirms saliency depends on learned weights.}
+\providecommand{\findLeakage}{Removing duplicate recordings yields comparable balanced accuracy (\macLegacyBA\% legacy vs \macDedupSEMHABA\% deduplicated, difference \macLeakageDiffBA\% points), while legacy test accuracy on duplicated rows was \macLeakageAccTwin\% versus \macLeakageAccUnique\% on unique rows.}
+\providecommand{\findOcclusion}{Frequency band occlusion reveals significant reliance exceeding random controls on bands: B1.}
+\providecommand{\findSanity}{In cascading weight randomization, Grad-CAM correlation drops to -0.02, confirming saliency depends on learned weights.}
