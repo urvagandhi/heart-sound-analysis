@@ -1,0 +1,316 @@
+========================================================================================
+EXPLAINABLE AI FOR HEART SOUND ANALYSIS: BRIDGING THE GAP BETWEEN ALGORITHMIC INFERENCE
+                                AND CLINICAL REASONING
+========================================================================================
+Comprehensive Presentation Script, Reference Papers Hierarchy, Novelty Breakdown,
+                     and Exhaustive Guide / Viva Counter-Questions
+========================================================================================
+
+STUDENT PRESENTERS:
+  * Urva Gandhi (23BCE078)
+  * Rakshit Gajnotar (23BCE077)
+  Department of Computer Science and Engineering, Nirma University, Ahmedabad, India
+PROJECT GUIDE:
+  * Dr. Sapan Mankad
+
+========================================================================================
+SECTION 1: THE 5-MINUTE PRESENTATION SCRIPT (STRUCTURED SLIDE-BY-SLIDE)
+========================================================================================
+
+[SLIDE 1: TITLE & CLINICAL MOTIVATION]
+"Good morning, Sir. Today we present our project: 'Explainable AI for Heart Sound Analysis: 
+Bridging the Gap Between Algorithmic Inference and Clinical Reasoning.'
+
+Cardiovascular diseases cause 17.9 million deaths annually—32% of global mortality. 
+Frontline screening relies on acoustic cardiac auscultation with a stethoscope, where 
+physicians listen for fundamental heart sounds S1 and S2, and pathological murmurs. 
+However, manual auscultation is subjective, examiner-dependent, and prone to ambient noise. 
+
+While deep learning models report over 90% accuracy on benchmark datasets, we observed that 
+these high scores rarely translate to clinical practice. Our work conducts a rigorous audit 
+of automated PCG classification along five empirical lines: data leakage, component 
+ablations, cross-site generalization, clinical calibration, and population-level XAI."
+
+----------------------------------------------------------------------------------------
+[SLIDE 2: BACKGROUND & LITERATURE FOUNDATION]
+"Our starting blueprint was the 2025 Bioengineering paper by Alrabie & Barnawi, which 
+proposed a hybrid architecture combining a ResNet50 backbone, Squeeze-and-Excitation (SE), 
+and Multi-Head Self-Attention (MHSA) with Grad-CAM heatmaps.
+
+However, after deeply studying the existing literature (Li et al., Althaph et al., Padhy et al.), 
+we identified four critical methodological shortcomings in prior works:
+1. They evaluate on single random splits without checking for duplicate data.
+2. They stack complex attention layers without proving if they are actually needed.
+3. They evaluate only on in-distribution data, hiding catastrophic cross-hospital domain shift.
+4. They present 1 or 2 cherry-picked heatmap images without quantitative explanation audits."
+
+----------------------------------------------------------------------------------------
+[SLIDE 3: NOVELTY 1 — DISCOVERY OF HIDDEN DATA LEAKAGE]
+"Our first major discovery is data leakage in the official PhysioNet/CinC 2016 challenge corpus. 
+We uncovered that 301 recordings in the official 'validation' folder are exact bit-for-bit 
+duplicates of recordings in the training folders.
+
+Under standard 70/15/15 random splits used throughout the literature, 70 out of 532 test 
+recordings (13.2%) were identical twins of training files. Our audit revealed that model 
+accuracy on these twin rows was inflated to 75.7% - 97.1%.
+
+To establish a clean scientific baseline, we eliminated these duplicates and constructed the 
+first verified 3,240-recording deduplicated benchmark (2,575 Normal, 665 Abnormal)."
+
+----------------------------------------------------------------------------------------
+[SLIDE 4: NOVELTY 2 — OCCAM'S RAZOR: SE BEATS MULTI-HEAD ATTENTION]
+"Second, we ran a systematic 15-experiment ablation matrix across 3 independent random seeds 
+(42, 43, 44) testing five architectural variants:
+1. Baseline ResNet50 (24.6M params): 88.4% Balanced Accuracy (BA), 95.2% AUC-ROC
+2. ResNet50 + MHSA (41.3M params): 87.7% BA, 95.1% AUC-ROC
+3. ResNet50 + SE + MHSA (41.9M params): 88.3% BA, 95.0% AUC-ROC
+4. ResNet50 + SE alone (dedup_se, 25.1M params): 89.0% BA, 95.4% AUC-ROC, 88.9% Sensitivity!
+
+Our finding: Adding Multi-Head Attention adds 16.8 million parameters (+67% bloat) with ZERO 
+diagnostic benefit. The simpler ResNet50 + SE model is the true champion: it is 40% smaller, 
+trains faster, and achieves the highest Balanced Accuracy (89.0%) and AUC-ROC (95.4%)."
+
+----------------------------------------------------------------------------------------
+[SLIDE 5: NOVELTY 3 — THE CROSS-SITE GENERALIZATION CRISIS (LODO)]
+"Third, we evaluated whether these models actually generalize to unseen clinical environments 
+using Leave-One-Database-Out (LODO) cross-validation across independent hospital sites:
+- MIT/Children's Hospital Boston (training-a)
+- Aalborg University (training-b)
+- Dalian University of Technology (training-e)
+- Soonchunhyang/Shiraz University (training-f)
+
+The result was stark: Performance plummeted by 35.6 to 39.3 percentage points! 
+Mean held-out Balanced Accuracy collapsed to 49.1% - 52.7% (near random guessing on hospital 
+subsets e and f). This proves empirically that cross-hospital stethoscope sensor resonance 
+and acoustic environment shift is the real bottleneck in AI auscultation, not model capacity."
+
+----------------------------------------------------------------------------------------
+[SLIDE 6: NOVELTY 4 & 5 — DILATED BACKBONE & QUANTITATIVE EXPLANATION AUDIT]
+"Fourth, to resolve the physical mismatch where standard ResNet50 cells span 1.14 s (blurring 
+an entire cardiac cycle), we engineered a dilated backbone with atrous convolutions, doubling 
+resolution to 0.57 s/cell (14x14 grid). While it improved localization, it scored 87.0% BA, 
+confirming token density alone does not solve acoustic domain shift.
+
+Fifth, instead of cherry-picked images, we built a 5-dimension quantitative XAI audit suite:
+1. Controlled Frequency Occlusion: Masking clinical band B1 (20-150 Hz S1/S2) caused a statistically 
+   significant drop (Delta BA = -7.81%, exceeding 20 random controls). Retaining only B1 preserved 
+   81.85% BA, proving the model genuinely listens to low-frequency cardiac energy.
+2. Adebayo Sanity Check: Cascading weight randomization caused Grad-CAM correlation to drop from 
+   +1.00 down to -0.0308, proving our saliency maps depend on learned weights, not edge priors.
+3. Perturbation Faithfulness: Deletion AUC sat at 0.629 vs 0.526 random, revealing that zero-dB 
+   patch masking introduces out-of-distribution spectrogram boundary artifacts.
+4. Operational Calibration: Shifting the clinical decision threshold on validation data (tau = 0.29) 
+   to prioritize frontline screening (>=90% sensitivity) yielded 98.00% test sensitivity 
+   (detecting 97 of 99 abnormal patients) on unseen test data."
+
+----------------------------------------------------------------------------------------
+[SLIDE 7: CONCLUSION & SUMMARY OF DELIVERABLES]
+"In conclusion, our study proves:
+1. Simpler architectures (SE alone) triumph over complex attention in data-constrained medical audio.
+2. Cross-site domain shift is the true clinical hurdle, requiring standardized sensor calibration.
+3. Post-hoc calibration achieves 98.00% sensitivity for clinical triage.
+
+All 10 LaTeX tables and figures have been integrated into our manuscript, cleanly passing all 
+Humanizer constraints (0 flags) and passing all 20/20 unit tests. Thank you, Sir."
+
+
+========================================================================================
+SECTION 2: REFERENCE PAPERS HIERARCHY (MOST USED TO LEAST USED)
+========================================================================================
+
+RANK 1 (MOST USED):
+  * S. Alrabie and A. Barnawi (2025), Bioengineering.
+    - Role: Primary architecture blueprint (ResNet50 + SE + MHSA) and Grad-CAM concept.
+    - What We Improved: Evaluated unsegmented audio on PhysioNet 2016, performed the first 
+      component ablation proving MHSA is unneeded, reported AUC-ROC, and added a multi-method 
+      audit suite.
+
+RANK 2:
+  * F. Li et al. (2020), Applied Sciences & C. Liu / G. D. Clifford et al. (CinC 2016 Challenge).
+    - Role: Benchmark dataset and baseline classification benchmark (86.80% unsegmented CNN).
+    - What We Improved: Discovered 301 validation duplicates in their corpus, established a 
+      clean 3,240-recording benchmark, and added explainability.
+
+RANK 3:
+  * M. Althaph and N. E. Challa (2025), Sci. Rep. & Z. Ren et al. (2022), Mach. Learn. Appl.
+    - Role: Attention and transformer benchmarks in PCG analysis (Althaph: 90.3%; Ren: 51.2% UAR).
+    - What We Improved: Ren's attention was temporal-only; Althaph used heavy transformers without 
+      auditing faithfulness or weight sanity checks.
+
+RANK 4:
+  * S. K. Padhy et al. (2025, X-CBNet), J. Transform. Technol. Sustain. Dev.
+    - Role: Time-frequency representation (log-mel spectrograms with zero-phase Butterworth filter).
+    - What We Improved: Padhy tested on an artificial balanced 5-class subset (2,400 samples). 
+      We evaluated on the real-world imbalanced clinical corpus with quantitative audits.
+
+RANK 5 (LEAST USED):
+  * J. Adebayo et al. (NeurIPS 2018), V. Petsiuk et al. (BMVC 2018), C. Guo et al. (ICML 2017).
+    - Role: Foundational methodologies for cascading weight randomization, deletion faithfulness, 
+      and Expected Calibration Error (ECE).
+
+
+========================================================================================
+SECTION 3: EXHAUSTIVE COUNTER-QUESTIONS & VIVA DEFENSE GUIDE
+========================================================================================
+
+QUESTION 1:
+"Why did you choose PhysioNet 2016 instead of a newer dataset like CirCor DigiScope or HeartWave?"
+
+EXACT DEFENSE:
+"Sir, PhysioNet 2016 is the universal gold-standard benchmark in cardiac auscultation research. 
+It contains 3,240 unique recordings gathered across six completely independent clinical research 
+centers (training-a through training-f) using different stethoscopes and patient populations.
+
+Datasets like HeartWave (used by Alrabie & Barnawi) are from a single institution, pre-segmented, 
+and relatively small. Using PhysioNet 2016 allowed us to test real unsegmented 8-second audio, 
+discover the 301-file duplicate leakage, and crucially, conduct Leave-One-Database-Out (LODO) 
+cross-site testing across independent hospitals. That would be impossible on single-site datasets."
+
+----------------------------------------------------------------------------------------
+QUESTION 2:
+"You say duplicate recordings inflated accuracy up to 97% on twin rows, but on the overall 
+test set, legacy accuracy was 86.7% and deduplicated accuracy was 86.6%. Why didn't the overall 
+accuracy drop more when duplicates were removed?"
+
+EXACT DEFENSE:
+"Sir, that is a subtle and important distinction:
+1. In the legacy split, the 70 twin rows accounted for 13.2% of the test set (70/532). While accuracy 
+   on those specific twin rows was inflated (75.7% to 97.1%), the non-duplicate rows had lower accuracy. 
+   When averaged together, the aggregate number masks the local inflation.
+2. In our deduplicated benchmark, we performed a fresh, stratified 70/15/15 partition on the 3,240 
+   unique files across three independent seeds. The resulting test sets contain diverse unique recordings.
+3. The true significance of deduplication is methodological integrity: in medical AI, having exact 
+   sound files of patients in both train and test partitions violates basic validation principles. 
+   Our deduplicated split ensures that zero leakage contaminates the reported metrics."
+
+----------------------------------------------------------------------------------------
+QUESTION 3:
+"In your ablation study, you claim Squeeze-and-Excitation (SE) alone is better than SE + Multi-Head 
+Attention. But attention and transformers are state-of-the-art. Why did MHSA fail to help here?"
+
+EXACT DEFENSE:
+"Sir, we identified two core reasons why Multi-Head Attention failed to provide an advantage:
+1. Sequence Length & Token Resolution: The ResNet50 backbone downsamples the spectrogram to a 
+   7x7 feature grid, which produces only 49 spatial tokens. For a sequence of only 49 tokens, 
+   self-attention has quadratic complexity (O(N^2)) and adds 16.8 million parameters without 
+   providing enough temporal-spectral diversity to learn meaningful long-range dependencies.
+2. Capacity Mismatch & Overfitting: In a medical dataset with 2,268 training recordings, adding 
+   16.8 million attention parameters (+67% model bloat) makes the network prone to memorizing 
+   stethoscope noise artifacts. 
+Squeeze-and-Excitation (SE), on the other hand, operates along the 2,048 feature channels with 
+only 0.52 million parameters (reduction ratio r=16). It recalibrates channel-wise frequency 
+importance globally, providing Occam's razor: maximum performance (89.0% BA, 95.4% AUC) with 
+minimal parameter overhead (25.1M total params)."
+
+----------------------------------------------------------------------------------------
+QUESTION 4:
+"If your dilated backbone doubles the resolution from 7x7 (1.14 s/cell) to 14x14 (0.57 s/cell), 
+why didn't it improve balanced accuracy (87.0% vs 89.0%)?"
+
+EXACT DEFENSE:
+"Sir, this was an important empirical negative result. While 0.57 seconds physically matches the 
+duration of S1 and S2 heart sounds much better than 1.14 seconds, the classification task on 
+PhysioNet is global binary screening (Normal vs Abnormal). 
+
+The 8-second log-mel spectrogram already contains 8 to 13 full cardiac cycles. Pathological murmurs 
+and structural abnormalities repeat throughout the clip. Global average pooling over a 7x7 grid 
+was already sufficient to capture the energy distribution. Expanding the grid to 14x14 (196 tokens) 
+quadrupled the spatial tokens and increased optimization difficulty without providing new discriminative 
+information, proving that temporal token density was not the actual bottleneck."
+
+----------------------------------------------------------------------------------------
+QUESTION 5:
+"In your LODO cross-site evaluation, balanced accuracy dropped to ~50% (random guess). Doesn't 
+that mean your model is useless in real clinical practice?"
+
+EXACT DEFENSE:
+"Sir, that is precisely the central warning of our paper! Every prior paper claimed near-90% 
+accuracy because they tested on random splits where recordings from the same hospital and stethoscope 
+were shared between training and testing.
+
+When we held out entire hospital databases (LODO):
+1. In dataset 'e', 91% of patients are normal, captured with a specific digital stethoscope.
+2. When trained on the other subsets, the network learns the acoustic sensor profile of subset 'e' 
+   as a shortcut for 'Normal'.
+3. When evaluated on an unseen hospital with a different stethoscope and acoustic response, the 
+   shortcut fails completely, causing the AUC to drop to 47.2% and Balanced Accuracy to 52.7%.
+
+This proves for the first time on this architecture that high benchmark accuracy is fragile under 
+hardware and site shifts. It demonstrates that the real challenge in medical AI auscultation is 
+cross-sensor calibration and domain-invariant representation learning, not making models bigger."
+
+----------------------------------------------------------------------------------------
+QUESTION 6:
+"Your deletion faithfulness tests showed deletion AUC > random deletion (p ≈ 1.00). Does that 
+mean your Grad-CAM and SHAP explanations are unfaithful or wrong?"
+
+EXACT DEFENSE:
+"Sir, this highlights a critical insight about how perturbation faithfulness tests behave on audio:
+1. In computer vision, deleting high-attribution pixels by setting them to zero or mean gray works 
+   because images have spatial continuity.
+2. In log-mel spectrograms, setting rectangular patches to 0 dB creates sharp artificial boundaries 
+   and discontinuities that never occur in real acoustic audio.
+3. These sharp out-of-distribution (OOD) boundaries distort the convolutional filters and cause 
+   prediction drops driven by edge artifacts rather than true feature removal.
+
+That is why we did not rely on deletion curves alone. We implemented the Adebayo et al. cascading 
+weight randomization check. When weights were randomized from the head down to early layers, 
+Grad-CAM correlation collapsed from +1.00 down to -0.0308. This proves that the saliency maps are 
+genuinely dependent on trained model weights and are not arbitrary edge detectors."
+
+----------------------------------------------------------------------------------------
+QUESTION 7:
+"How did your sensitivity-targeted threshold achieve 98.00% test sensitivity? Did you cheat by 
+tuning on the test set?"
+
+EXACT DEFENSE:
+"No, Sir! The operating threshold was strictly selected using only validation set probabilities:
+1. We evaluated the validation set probabilities and found the decision threshold tau that achieved 
+   >=90% sensitivity on validation abnormal patients. For the SE model, this selected tau = 0.29.
+2. We then locked tau = 0.29 and evaluated it once on the unseen test set.
+3. On the test set, this operational threshold correctly detected 97 out of 99 abnormal pathology 
+   cases (98.00% sensitivity) while maintaining 89.12% specificity and 90.95% overall accuracy.
+
+This demonstrates that for clinical frontline triage—where missing an abnormal heart is dangerous—
+calibrating the operating threshold on validation data reliably transfers to high test sensitivity."
+
+----------------------------------------------------------------------------------------
+QUESTION 8:
+"Why didn't you evaluate Springer segmentation-based state enrichment?"
+
+EXACT DEFENSE:
+"Sir, Springer segmentation requires raw .mat StateAns annotations containing ground-truth 
+S1, systole, S2, and diastole boundaries. In the PhysioNet 2016 challenge, those annotations 
+exist for only a small subset of recordings (primarily subset 'a').
+
+Our architecture is intentionally designed to be unsegmented: it operates directly on raw 
+8-second spectrograms without relying on external segmentation tools. In real-world auscultation, 
+murmurs and arrhythmia often cause segmentation algorithms to fail. By bypassing segmentation, 
+our model remains fully autonomous and robust."
+
+----------------------------------------------------------------------------------------
+QUESTION 9:
+"Why did you use 3 seeds instead of 5 or 10?"
+
+EXACT DEFENSE:
+"Sir, running 3 seeds across 5 architectural variants, plus 8 LODO folds, plus duplicate verification, 
+totaled 24 full benchmark training runs (each running 40 epochs of 2-stage transfer learning). 
+Furthermore, running SHAP gradient expectation passes on 128 balanced samples required over 
+10 hours of computation.
+
+Evaluating across seeds 42, 43, and 44 allowed us to report sample standard deviations (ddof=1) 
+and paired seed-matched differences while maintaining computational feasibility on our hardware."
+
+----------------------------------------------------------------------------------------
+QUESTION 10:
+"What is the ultimate takeaway of your paper for someone deploying heart sound AI?"
+
+EXACT DEFENSE:
+"Sir, our paper delivers three clear, actionable recommendations:
+1. Adopt Occam's Razor: Use ResNet50 + SE (dedup_se). It achieves higher accuracy (89.0% BA, 95.4% AUC) 
+   and higher sensitivity (88.9%) than attention architectures while being 40% smaller and faster.
+2. Calibrate Operating Thresholds: Do not use default 0.50 probability thresholds. Setting tau ≈ 0.30 
+   prioritizes sensitivity (98.00%) for clinical screening.
+3. Multi-Site Validation is Mandatory: Never trust a single-split benchmark score. Cross-site testing 
+   must be performed to verify sensor robustness before clinical deployment."
+========================================================================================
