@@ -1,0 +1,55 @@
+flowchart LR
+    subgraph PRE["Stage 1: Input & Preprocessing"]
+        direction TB
+        A["PCG Audio Signal<br/>(8.0 s @ 2 kHz, 16k samples)"] --> B["Butterworth Bandpass Filter<br/>(25 - 400 Hz) + Spike Removal"]
+        B --> C["Log-Mel Spectrogram<br/>(128 Mels -> 224 x 224 x 3 RGB)"]
+    end
+
+    subgraph BB["Stage 2: Deep Feature Backbone"]
+        direction TB
+        D["Pretrained ResNet-50<br/>(ImageNet Pretrained Weights)"] --> E["Feature Tensor<br/>(2048 channels x 7 x 7 grid)"]
+    end
+
+    subgraph BRA["Branch A: Parsimonious Sweet Spot (Top Performer)"]
+        direction TB
+        F1["Squeeze-and-Excitation (SE)<br/>(Channel Recalibration, r = 16)"]
+        G1["Global Average Pooling (GAP)<br/>(Collapses 7x7 grid -> 2,048-D)"]
+        H1["Dense MLP Classifier Head<br/>(Linear 2048->512 -> ReLU -> Linear 512->2)"]
+        I1["Auscultation Diagnosis: Normal vs Abnormal<br/><b>25.1M Params | 89.0% BA | 95.4% AUC</b>"]
+        F1 --> G1 --> H1 --> I1
+    end
+
+    subgraph BRB["Branch B: Reference Attention Model (Main Pipeline)"]
+        direction TB
+        F2["Squeeze-and-Excitation (SE)<br/>(Channel Recalibration, r = 16)"]
+        G2["Spatial Tokenization<br/>(49 Tokens x 2,048 Dimensions)"]
+        H2["8-Head Self-Attention (MHSA)<br/>(Residual Addition + LayerNorm)"]
+        I2["Token Mean Pooling<br/>(Aggregates tokens -> 2,048-D)"]
+        J2["Dense MLP Classifier Head<br/>(Linear 2048->512 -> ReLU -> Linear 512->2)"]
+        K2["Auscultation Diagnosis: Normal vs Abnormal<br/><b>41.9M Params (+67%) | 88.3% BA | 95.0% AUC</b>"]
+        F2 --> G2 --> H2 --> I2 --> J2 --> K2
+    end
+
+    subgraph AUD["Stage 3: Population-Level Clinical Explanation Audits"]
+        direction TB
+        L["Attribution Heatmaps<br/>(Grad-CAM / Attention / SHAP)"]
+        M1["Frequency Occlusion: B1 (20-150 Hz) Reliance"]
+        M2["Faithfulness: Deletion & Insertion AUC"]
+        M3["Cascading Sanity Check: Randomization"]
+        L --> M1
+        L --> M2
+        L --> M3
+    end
+
+    PRE ==> BB
+    BB ==> BRA
+    BB ==> BRB
+    BRB -.-> AUD
+
+    style PRE fill:#f8f9fa,stroke:#343a40,stroke-width:1.5px
+    style BB fill:#f8f9fa,stroke:#343a40,stroke-width:1.5px
+    style BRA fill:#eef6fc,stroke:#0d6efd,stroke-width:2px
+    style BRB fill:#f8f9fa,stroke:#495057,stroke-width:2px
+    style AUD fill:#fffdf5,stroke:#b45309,stroke-width:1.5px
+    style I1 fill:#d1e7dd,stroke:#198754,stroke-width:1.5px
+    style K2 fill:#fff3cd,stroke:#d97706,stroke-width:1.5px
