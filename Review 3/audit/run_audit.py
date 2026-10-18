@@ -192,12 +192,30 @@ def run_audit(tag: str,
               annotations_dir: Optional[Path] = None,
               shap_n: int = 128,
               results_dir: Optional[Path] = None,
-              base_dir: Optional[Path] = None) -> None:
+              base_dir: Optional[Path] = None,
+              force: bool = False) -> None:
     """Execute complete 5-part audit on a trained model checkpoint."""
     repo_root = Path(base_dir) if base_dir else Path(__file__).resolve().parent.parent.parent
     res_root = Path(results_dir) if results_dir else repo_root / "results"
     out_dir = res_root / f"audit_{tag}"
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    required_artifacts = [
+        out_dir / "calibration.json",
+        out_dir / "occlusion.json",
+        out_dir / "faithfulness.json",
+        out_dir / "sanity.json",
+        out_dir / "agreement.json",
+        out_dir / "enrichment.json",
+        out_dir / "gradcam_overlays.png",
+    ]
+    if all(p.exists() for p in required_artifacts) and not force:
+        print("=" * 70)
+        print(f"  Audit for '{tag}' is already complete!")
+        print(f"  All 6 clinical audit artifacts and figures exist in: {out_dir}")
+        print("  Skipping audit execution (pass --force to re-run from scratch).")
+        print("=" * 70)
+        return
 
     device = get_device()
     print("=" * 70)
@@ -349,6 +367,7 @@ def main() -> None:
     parser.add_argument("--shap-n", type=int, default=128, help="Number of balanced samples for SHAP cohort.")
     parser.add_argument("--results_dir", type=str, default=None, help="Path to results root directory.")
     parser.add_argument("--base_dir", type=str, default=None, help="Base repo directory.")
+    parser.add_argument("--force", action="store_true", help="Force re-execution of audit even if results exist.")
     args = parser.parse_args()
 
     raw_dir = Path(args.raw_dir) if args.raw_dir else None
@@ -363,6 +382,7 @@ def main() -> None:
         shap_n=args.shap_n,
         results_dir=res_dir,
         base_dir=base_dir,
+        force=args.force,
     )
 
 
