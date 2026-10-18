@@ -206,7 +206,7 @@ python -m pytest -v
 
 ```bibtex
 @article{gandhi2026xaiheartsound,
-  title   = {Leakage-Aware Evaluation, Architectural Ablations and Population-Level Explanation Audits for Phonocardiogram Classification},
+  title   = {Explainable AI for Heart Sound Analysis: Bridging the Gap Between Algorithmic Inference and Clinical Reasoning},
   author  = {Urva Gandhi and Rakshit Gajnotar and Dr. Sapan Mankad},
   journal = {Department of Computer Science and Engineering, Nirma University},
   year    = {2026}
