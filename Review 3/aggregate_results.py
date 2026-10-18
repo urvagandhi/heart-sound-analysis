@@ -69,10 +69,11 @@ def compute_seed_mean_sd(values: List[float]) -> Tuple[Optional[float], Optional
 class ResultsAggregator:
     """Aggregates benchmark JSONs and generates LaTeX deliverables."""
 
-    def __init__(self, repo_root: Path, results_dir: Path, gen_dir: Path) -> None:
+    def __init__(self, repo_root: Path, results_dir: Path, gen_dir: Path, audit_tag: str = "dedup_se_mha_seed42") -> None:
         self.repo_root = repo_root
         self.results_dir = results_dir
         self.gen_dir = gen_dir
+        self.audit_tag = audit_tag
         self.gen_dir.mkdir(parents=True, exist_ok=True)
 
         self.macros: Dict[str, str] = {}
@@ -170,8 +171,8 @@ class ResultsAggregator:
         return data
 
     def collect_audit_data(self) -> Dict[str, Any]:
-        """Load audit JSONs for primary evaluated model (dedup_se_mha_seed42)."""
-        audit_tag = "dedup_se_mha_seed42"
+        """Load audit JSONs for evaluated model (default: dedup_se_mha_seed42)."""
+        audit_tag = getattr(self, "audit_tag", "dedup_se_mha_seed42")
         audit_dir = self.results_dir / f"audit_{audit_tag}"
 
         return {
@@ -818,13 +819,14 @@ def main() -> None:
     parser.add_argument("--base", type=str, default=None)
     parser.add_argument("--results_dir", type=str, default=None)
     parser.add_argument("--gen_dir", type=str, default=None)
+    parser.add_argument("--audit_tag", type=str, default="dedup_se_mha_seed42", help="Tag of audited model.")
     args = parser.parse_args()
 
     repo_root = Path(args.base) if args.base else Path(__file__).resolve().parent.parent
     results_dir = Path(args.results_dir) if args.results_dir else repo_root / "results"
     gen_dir = Path(args.gen_dir) if args.gen_dir else repo_root / "Paper Writing" / "generated"
 
-    aggregator = ResultsAggregator(repo_root=repo_root, results_dir=results_dir, gen_dir=gen_dir)
+    aggregator = ResultsAggregator(repo_root=repo_root, results_dir=results_dir, gen_dir=gen_dir, audit_tag=args.audit_tag)
     aggregator.generate_tables_and_macros()
     print("\nAggregation complete!")
 
